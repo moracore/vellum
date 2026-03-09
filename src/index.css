@@ -511,29 +511,22 @@ input, textarea, button { font-family: inherit; }
   gap: 8px;
 }
 
-.sheet-bottom-section {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 0;
+.stats-settings-btn {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--nav-height) + 16px);
+  z-index: 100;
+  width: auto;
+  margin: 0;
+  padding: 12px 20px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  color: var(--text-primary);
+  cursor: pointer;
 }
 
-.stats-settings-btn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 16px;
-  cursor: pointer;
-  letter-spacing: 0.03em;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 12px 24px;
-  border-radius: 8px;
-  transition: color 0.15s, background 0.15s;
-}
 .stats-settings-btn:active {
   color: var(--accent);
   background: rgba(255, 255, 255, 0.05);
@@ -2272,67 +2265,3 @@ input[type="range"]:disabled { cursor: default; }
 
 .loading-text { font-size: 20px; color: var(--text-secondary); }
 
-@media (max-aspect-ratio: 2/3) {
-
-  /* 1. Reset the "Zoomed In" feel */
-  body {
-    font-size: 16px;
-    /* Lowering from 24px solves the 'too big' issue */
-  }
-
-  /* 2. Prevent Overlap: Let panels stack naturally instead of squishing */
-  .panels {
-    display: block;
-    overflow-y: auto;
-    height: auto;
-  }
-
-  .panel {
-    height: auto;
-    min-height: calc(100vh - var(--nav-height));
-    border-right: none;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  /* 3. Shrink specific UI elements that are too large for mobile */
-  .sheet-header-charname {
-    font-size: 18px;
-  }
-
-  .sheet-ab-mod {
-    font-size: 20px;
-  }
-
-  .sheet-hp-cur {
-    font-size: 32px;
-  }
-
-  .select-title {
-    font-size: 32px;
-  }
-
-  .select-subtitle {
-    font-size: 16px;
-  }
-
-  /* 4. Improve spacing on tight screens */
-  .page-content {
-    padding: 12px;
-    max-width: 100%;
-  }
-
-  .sheet-columns {
-    /* Adjust columns so they don't crush each other */
-    grid-template-columns: 1fr 2fr 2fr;
-    gap: 4px;
-  }
-
-  /* 5. Fix the stats sheet header fields for narrow widths */
-  .sheet-hfield-val {
-    font-size: 11px;
-  }
-
-  .sheet-hfield-lbl {
-    font-size: 7px;
-  }
-}
