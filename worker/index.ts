@@ -186,7 +186,14 @@ function corsHeaders(origin: string, allowed: string): Record<string, string> {
 function json(data: unknown, status = 200, cors: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json', ...cors },
+    headers: {
+      'Content-Type': 'application/json',
+      ...cors,
+      // Prevents the browser from caching the character data
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    },
   })
 }
 
