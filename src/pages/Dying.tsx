@@ -20,7 +20,7 @@ export default function Dying({ onStabilized }: Props) {
     if (state && state.deathSaveSuccesses >= 3) setStabilizeModal(true)
   }, [state?.deathSaveSuccesses]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!state) return null
+  if (!state || !sheet) return null
 
   const failures = state.deathSaveFailures
   const isDead = failures >= 3
