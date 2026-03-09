@@ -2,8 +2,9 @@ import fidoMd    from './fido.md?raw'
 import olafMd    from './olaf.md?raw'
 import manglerMd from './mangler.md?raw'
 import slorfMd   from './slorf.md?raw'
+import evelynMD  from './evelyn.md?raw'
 
-const ALL: string[] = [fidoMd, olafMd, manglerMd, slorfMd]
+const ALL: string[] = [fidoMd, olafMd, manglerMd, slorfMd, evelynMD]
 
 // Match by player name or character name, case-insensitive
 export function findCharacter(query: string): string | null {
