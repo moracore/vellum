@@ -2271,3 +2271,68 @@ input[type="range"]:disabled { cursor: default; }
 }
 
 .loading-text { font-size: 20px; color: var(--text-secondary); }
+
+@media (max-aspect-ratio: 2/3) {
+
+  /* 1. Reset the "Zoomed In" feel */
+  body {
+    font-size: 16px;
+    /* Lowering from 24px solves the 'too big' issue */
+  }
+
+  /* 2. Prevent Overlap: Let panels stack naturally instead of squishing */
+  .panels {
+    display: block;
+    overflow-y: auto;
+    height: auto;
+  }
+
+  .panel {
+    height: auto;
+    min-height: calc(100vh - var(--nav-height));
+    border-right: none;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  /* 3. Shrink specific UI elements that are too large for mobile */
+  .sheet-header-charname {
+    font-size: 18px;
+  }
+
+  .sheet-ab-mod {
+    font-size: 20px;
+  }
+
+  .sheet-hp-cur {
+    font-size: 32px;
+  }
+
+  .select-title {
+    font-size: 32px;
+  }
+
+  .select-subtitle {
+    font-size: 16px;
+  }
+
+  /* 4. Improve spacing on tight screens */
+  .page-content {
+    padding: 12px;
+    max-width: 100%;
+  }
+
+  .sheet-columns {
+    /* Adjust columns so they don't crush each other */
+    grid-template-columns: 1fr 2fr 2fr;
+    gap: 4px;
+  }
+
+  /* 5. Fix the stats sheet header fields for narrow widths */
+  .sheet-hfield-val {
+    font-size: 11px;
+  }
+
+  .sheet-hfield-lbl {
+    font-size: 7px;
+  }
+}
