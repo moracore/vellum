@@ -1,0 +1,12 @@
+name             = "vellum-sync"
+main             = "index.ts"
+compatibility_date = "2024-09-23"
+
+[vars]
+# Override this for your actual GitHub Pages URL before deploying to production.
+# For local dev, set ALLOWED_ORIGIN in worker/.dev.vars (never commit that file).
+ALLOWED_ORIGIN = "https://moracore.github.io"
+
+# Secrets — set these via CLI, never put real values here:
+#   wrangler secret put GOOGLE_SERVICE_ACCOUNT
+#   wrangler secret put SHEET_ID
