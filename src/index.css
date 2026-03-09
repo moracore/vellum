@@ -511,6 +511,16 @@ input, textarea, button { font-family: inherit; }
   gap: 8px;
 }
 
+.sheet-bottom-section {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+
 .stats-settings-btn {
   position: fixed;
   right: 16px;
@@ -525,6 +535,7 @@ input, textarea, button { font-family: inherit; }
   box-shadow: var(--shadow-md);
   color: var(--text-primary);
   cursor: pointer;
+  pointer-events: auto;
 }
 
 .stats-settings-btn:active {
