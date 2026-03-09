@@ -518,16 +518,20 @@ input, textarea, button { font-family: inherit; }
   justify-content: center;
   min-height: 0;
   pointer-events: none;
-  z-index: -1;
+  /* Keep this: let's you click through the gap */
+  /* REMOVED z-index: -1; - This was burying the button */
 }
 
 .stats-settings-btn {
-  /* Functional Fixes */
   position: fixed;
   right: 16px;
   bottom: calc(var(--nav-height) + 16px);
   z-index: 100;
+  /* Keeps button on top of everything */
   pointer-events: auto;
+  /* Correct: re-enables clicking the button */
+
+  /* Your design */
   background: none;
   border: none;
   color: var(--text-muted);
