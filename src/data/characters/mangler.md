@@ -50,7 +50,7 @@ Survival: proficient
 ## Combat
 
 Max HP: 18
-Current HP: 18
+Current HP: 17
 Temp HP: 0
 AC: 16
 Initiative: 2

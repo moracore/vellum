@@ -2201,3 +2201,73 @@ input[type="range"]:disabled { cursor: default; }
   resize: none;
   outline: none;
 }
+
+/* ── Conflict resolution modal ────────────────────────────────────────────── */
+
+.conflict-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+
+.conflict-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 28px 24px;
+  max-width: 480px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.conflict-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 0;
+}
+
+.conflict-desc {
+  font-size: 17px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.conflict-options {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.conflict-option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.conflict-option-label { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.conflict-option-time  { font-size: 13px; color: var(--text-secondary); }
+.conflict-divider      { font-size: 14px; color: var(--text-secondary); flex-shrink: 0; }
+.conflict-busy         { font-size: 15px; color: var(--text-secondary); text-align: center; margin: 0; }
+
+/* ── App loading screen ───────────────────────────────────────────────────── */
+
+.loading-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100dvh;
+  background: var(--bg-primary);
+}
+
+.loading-text { font-size: 20px; color: var(--text-secondary); }

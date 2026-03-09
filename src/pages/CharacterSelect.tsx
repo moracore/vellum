@@ -8,18 +8,27 @@ interface Props {
 
 export default function CharacterSelect({ onLoaded }: Props) {
   const { loadCharacter } = useCharacter()
-  const [query, setQuery] = useState('')
-  const [error, setError] = useState('')
+  const [query, setQuery]   = useState('')
+  const [error, setError]   = useState('')
+  const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const markdown = findCharacter(query)
-    if (!markdown) {
-      setError('No character found. Check your name and try again.')
-      return
+    setLoading(true)
+    setError('')
+    try {
+      const result = await findCharacter(query)
+      if (!result) {
+        setError('No character found. Check your name and try again.')
+        return
+      }
+      await loadCharacter(result.id)
+      onLoaded()
+    } catch {
+      setError('Failed to load character. Try again.')
+    } finally {
+      setLoading(false)
     }
-    await loadCharacter(markdown)
-    onLoaded()
   }
 
   return (
@@ -36,9 +45,12 @@ export default function CharacterSelect({ onLoaded }: Props) {
             onChange={(e) => { setQuery(e.target.value); setError('') }}
             placeholder="e.g. Lucas or Fido"
             autoFocus
+            disabled={loading}
           />
           {error && <p className="select-error">{error}</p>}
-          <button className="btn-primary" type="submit">Open Sheet</button>
+          <button className="btn-primary" type="submit" disabled={loading}>
+            {loading ? 'Loading…' : 'Open Sheet'}
+          </button>
         </form>
       </div>
     </div>

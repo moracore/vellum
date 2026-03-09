@@ -123,9 +123,9 @@ export default function Settings({ onClose }: { onClose?: () => void }) {
   }
 
   const handleNameSave = async () => {
-    const md = findCharacter(nameInput)
-    if (!md) { setNameError('No character found for that name.'); return }
-    await loadCharacter(md)
+    const result = await findCharacter(nameInput)
+    if (!result) { setNameError('No character found for that name.'); return }
+    await loadCharacter(result.id)
     const s = await getSettings()
     await saveSettings({ ...s, playerName: nameInput.trim() })
     setNameEditing(false)

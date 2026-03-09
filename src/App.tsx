@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { ThemeProvider } from './context/ThemeContext'
 import { CharacterProvider, useCharacter } from './context/CharacterContext'
 import { findCharacter } from './data/characters'
-import { getSettings, saveSettings } from './db'
+import { getSettings, saveSettings, getLastPullAt } from './db'
+import { syncAllCharacters, STALE_MS } from './lib/sync'
 import CharacterSelect from './pages/CharacterSelect'
 import Stats from './pages/Stats'
 import Traits from './pages/Traits'
@@ -46,18 +47,32 @@ function LevelUpOverlay({ msg, onDismiss }: { msg: string; onDismiss: () => void
 
 function Shell() {
   const { sheet, dmMode, setDmMode, loadCharacter, levelUpMsg, clearLevelUp } = useCharacter()
-  const [tab, setTab] = useState<Tab>('stats')
+  const [tab, setTab]               = useState<Tab>('stats')
   const [showSettings, setShowSettings] = useState(false)
-  const [isDying, setIsDying] = useState(false)
+  const [isDying, setIsDying]       = useState(false)
+  const [initializing, setInitializing] = useState(true)
   const bp = useBreakpoint()
 
+  // On mount: pull-all if stale, then auto-load saved player character
   useEffect(() => {
-    getSettings().then(s => {
-      if (s.playerName) {
-        const md = findCharacter(s.playerName)
-        if (md) loadCharacter(md)
+    void (async () => {
+      try {
+        const lastPull = await getLastPullAt()
+        const stale    = !lastPull || Date.now() - new Date(lastPull).getTime() > STALE_MS
+
+        if (stale) await syncAllCharacters()
+
+        const s = await getSettings()
+        if (s.playerName) {
+          const result = await findCharacter(s.playerName)
+          if (result) await loadCharacter(result.id)
+        }
+      } catch {
+        // Offline or worker unavailable — continue with whatever is in IDB
+      } finally {
+        setInitializing(false)
       }
-    })
+    })()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -65,6 +80,14 @@ function Shell() {
       getSettings().then(s => saveSettings({ ...s, playerName: sheet.playerName }))
     }
   }, [sheet?.playerName])
+
+  if (initializing) {
+    return (
+      <div className="loading-screen">
+        <span className="loading-text">Loading…</span>
+      </div>
+    )
+  }
 
   if (!sheet) return <CharacterSelect onLoaded={() => {}} />
 
@@ -76,7 +99,6 @@ function Shell() {
 
   const isCharGroup = tab === 'stats' || tab === 'traits'
 
-  // DM edit and Settings float above everything as fixed overlays
   if (dmMode)       return <DMEdit onClose={() => setDmMode(false)} />
   if (showSettings) return (
     <div className="app-shell">

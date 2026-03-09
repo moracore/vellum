@@ -1,20 +1,28 @@
-import fidoMd    from './fido.md?raw'
-import olafMd    from './olaf.md?raw'
-import manglerMd from './mangler.md?raw'
-import slorfMd   from './slorf.md?raw'
-import evelynMD  from './evelyn.md?raw'
+import { getAllCharacterRecords } from '../../db'
 
-const ALL: string[] = [fidoMd, olafMd, manglerMd, slorfMd, evelynMD]
+// The static .md files in this directory are kept for DM reference / initial
+// Sheet seeding only.  At runtime the app reads exclusively from IndexedDB,
+// which is populated by the startup pull from the Cloudflare Worker.
 
-// Match by player name or character name, case-insensitive
-export function findCharacter(query: string): string | null {
-  const q = query.trim().toLowerCase().replace(/\s+/g, '')
-  return ALL.find(md => {
-    const lines = md.split('\n')
-    const charName = lines.find(l => l.startsWith('# '))?.slice(2).trim().toLowerCase().replace(/\s+/g, '') ?? ''
+/**
+ * Search IndexedDB for a character matching the given player name, character
+ * name, or alias (all case-insensitive, whitespace-collapsed).
+ *
+ * Returns { id, markdown } or null if no match is found.
+ */
+export async function findCharacter(query: string): Promise<{ id: string; markdown: string } | null> {
+  const q       = query.trim().toLowerCase().replace(/\s+/g, '')
+  const records = await getAllCharacterRecords()
+
+  const found = records.find(({ markdown }) => {
+    const lines      = markdown.split('\n')
+    const charName   = lines.find(l => l.startsWith('# '))?.slice(2).trim().toLowerCase().replace(/\s+/g, '') ?? ''
     const playerName = lines.find(l => l.startsWith('Player:'))?.slice(7).trim().toLowerCase().replace(/\s+/g, '') ?? ''
-    const aliases = (lines.find(l => l.startsWith('Aliases:'))?.slice(8).trim() ?? '')
+    const aliases    = (lines.find(l => l.startsWith('Aliases:'))?.slice(8).trim() ?? '')
       .split(',').map(a => a.trim().toLowerCase().replace(/\s+/g, '')).filter(Boolean)
+
     return charName === q || playerName === q || aliases.includes(q)
-  }) ?? null
+  })
+
+  return found ? { id: found.id, markdown: found.markdown } : null
 }
