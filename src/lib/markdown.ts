@@ -25,6 +25,7 @@ export function serializeCharacter(sheet: CharacterSheet, state: CharacterState)
   line(`Languages: ${sheet.languages.join(', ')}`)
   if (sheet.aliases.length) line(`Aliases: ${sheet.aliases.join(', ')}`)
   if (sheet.otherProficiencies) line(`Other Proficiencies: ${sheet.otherProficiencies}`)
+  if (sheet.extraTraits.length) line(`Extra Traits: ${sheet.extraTraits.join(', ')}`)
 
   line('', '## Ability Scores', '')
   const ab = sheet.abilityScores
@@ -229,6 +230,7 @@ export function parseCharacter(md: string): { sheet: CharacterSheet; state: Char
     deity:             hKV['Deity'],
     languages:         (hKV['Languages'] ?? '').split(',').map(l => l.trim()).filter(Boolean),
     otherProficiencies: hKV['Other Proficiencies'] ?? '',
+    extraTraits:       (hKV['Extra Traits'] ?? '').split(',').map(t => t.trim()).filter(Boolean),
     aliases: (hKV['Aliases'] ?? '').split(',').map(a => a.trim()).filter(Boolean),
 
     abilityScores: {

@@ -59,6 +59,14 @@ export default function Traits({ hideHeader }: { hideHeader?: boolean } = {}) {
       </div>
 
       <div className="traits-list">
+        {sheet.extraTraits.map((name, i) => (
+          <div key={`extra-${i}`} className="trait-card">
+            <div className="trait-title-row">
+              <span className="trait-name">{name}</span>
+              <span className="trait-level">Background</span>
+            </div>
+          </div>
+        ))}
         {mainFeatures.length === 0 ? (
           <div className="trait-no-class">
             {sheet.class ? `No features found for ${sheet.class}.` : 'No class set.'}

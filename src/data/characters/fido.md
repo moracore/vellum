@@ -6,7 +6,8 @@ Class: Sorcerer
 Level: 2
 Race: Tiefling
 Alignment: Neutral Good
-Languages: Common, Dwarvish, Halfling, Thieves' Cant
+Languages: Common, Dwarvish, Halfling
+Extra Traits: Thieves' Cant
 
 ## Ability Scores
 
@@ -83,9 +84,9 @@ Silent Image: false
 
 ## Currency
 
-GP: 0
-SP: 0
-CP: 0
+GP: 50
+SP: 32
+CP: 4
 
 ## Items
 

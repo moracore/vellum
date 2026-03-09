@@ -1,42 +1,43 @@
-# Slorf
+# Slorf Jr III
 
 Player: Michael
-Class:
-Level: 1
-Race:
-Alignment:
-Languages:
+Aliases: slorf, slorfjr, slorfiii, sj3, junior, slorfjr3, slorfjunior, slorfjunioriii, slorfjuniorthethird, slorfjuniorthird
+Class: Rogue
+Level: 2
+Race: Half-Elf
+Alignment: Chaotic Good
+Languages: Common, Elvish, Orc
 
 ## Ability Scores
 
-STR: 10
-DEX: 10
-CON: 10
-INT: 10
-WIS: 10
-CHA: 10
+STR: 13
+DEX: 14
+CON: 8
+INT: 16
+WIS: 13
+CHA: 12
 
 ## Saving Throws
 
 STR: false
-DEX: false
+DEX: true
 CON: false
-INT: false
+INT: true
 WIS: false
 CHA: false
 
 ## Skills
 
-Acrobatics: none
-Animal Handling: none
-Arcana: none
+Acrobatics: proficient
+Animal Handling: proficient
+Arcana: proficient
 Athletics: none
 Deception: none
-History: none
+History: proficient
 Insight: none
 Intimidation: none
-Investigation: none
-Medicine: none
+Investigation: proficient
+Medicine: proficient
 Nature: none
 Perception: none
 Performance: none
@@ -48,17 +49,23 @@ Survival: none
 
 ## Combat
 
-Max HP: 10
-Current HP: 10
+Max HP: 13
+Current HP: 13
 Temp HP: 0
-AC: 10
-Initiative: 0
+AC: 13
+Initiative: 2
 Speed: 30
-Hit Dice: 1d8
+Hit Dice: 2d8
 Proficiency Bonus: 2
 Death Save Successes: 0
 Death Save Failures: 0
 Conditions:
+
+## Spellcasting
+
+Ability: int
+Attack Bonus: 5
+Save DC: 13
 
 ## Spell Slots
 
@@ -66,7 +73,8 @@ Conditions:
 
 ## Spells
 
-(none)
+Frostbite: false
+Light: false
 
 ## Currency
 
@@ -79,5 +87,12 @@ CP: 0
 (none)
 
 ## Notes
+
+- Perception: Has an additional +2 bonus.
+- History: Has an additional +1 bonus.
+- HP Calculation: 14 + CON (-1) = 13.
+- AC Calculation: Assuming Leather Armor (11) + DEX (2) = 13.
+
+## Description
 
 (none)

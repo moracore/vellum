@@ -1084,27 +1084,6 @@ export const CLASS_FEATURES: Record<string, ClassFeature[]> = {
   Rogue: [
     {
       level: 1,
-      name: "Expertise (1 & 2)",
-      description:
-        "Choose two of your skill proficiencies or your proficiency with thieves' tools; your proficiency bonus is doubled for those.",
-      choice: {
-        key: "rogueExpertise1",
-        label: "Expertise: First Skill",
-        options: EXPERTISE_SKILLS,
-      },
-    },
-    {
-      level: 1,
-      name: "Expertise (2nd choice)",
-      description: "Choose your second Expertise skill or tool.",
-      choice: {
-        key: "rogueExpertise2",
-        label: "Expertise: Second Skill",
-        options: EXPERTISE_SKILLS,
-      },
-    },
-    {
-      level: 1,
       name: "Sneak Attack",
       description:
         "Once per turn, deal extra damage (1d6 at level 1, increasing by 1d6 every odd level) to one creature you hit if you have advantage on the attack roll, or if an ally is adjacent to the target and you don't have disadvantage.",

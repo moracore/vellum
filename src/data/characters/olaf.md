@@ -1,25 +1,26 @@
 # Olaf
 
 Player: Su Su
-Class:
-Level: 1
-Race:
-Alignment:
-Languages:
+Aliases: susu, olaf
+Class: Ranger
+Level: 2
+Race: Elf
+Alignment: Neutral Good
+Languages: Common, Elvish
 
 ## Ability Scores
 
-STR: 10
-DEX: 10
-CON: 10
-INT: 10
-WIS: 10
+STR: 12
+DEX: 17
+CON: 13
+INT: 8
+WIS: 15
 CHA: 10
 
 ## Saving Throws
 
-STR: false
-DEX: false
+STR: true
+DEX: true
 CON: false
 INT: false
 WIS: false
@@ -28,41 +29,47 @@ CHA: false
 ## Skills
 
 Acrobatics: none
-Animal Handling: none
+Animal Handling: proficient
 Arcana: none
-Athletics: none
+Athletics: proficient
 Deception: none
 History: none
-Insight: none
-Intimidation: none
+Insight: proficient
+Intimidation: proficient
 Investigation: none
 Medicine: none
 Nature: none
-Perception: none
+Perception: proficient
 Performance: none
 Persuasion: none
 Religion: none
 Sleight of Hand: none
 Stealth: none
-Survival: none
+Survival: proficient
 
 ## Combat
 
-Max HP: 10
-Current HP: 10
+Max HP: 19
+Current HP: 19
 Temp HP: 0
-AC: 10
-Initiative: 0
+AC: 14
+Initiative: 3
 Speed: 30
-Hit Dice: 1d8
+Hit Dice: 2d10
 Proficiency Bonus: 2
 Death Save Successes: 0
 Death Save Failures: 0
 Conditions:
 
+## Spellcasting
+
+Ability: wis
+Attack Bonus: 4
+Save DC: 12
+
 ## Spell Slots
 
-(none)
+1: 2/2
 
 ## Spells
 
@@ -76,8 +83,15 @@ CP: 0
 
 ## Items
 
+Leather Armor
 (none)
 
 ## Notes
+
+- AC Calculation: Leather Armor (11) + DEX (3) = 14.
+- Skills: Perception (+4), Animal Handling (+4), Athletics (+3), Survival (+4), Insight (+4), Intimidation (+2).
+- Features Needed: Fighting Style, Favored Enemy, Natural Explorer.
+
+## Description
 
 (none)
