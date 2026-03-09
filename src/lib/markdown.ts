@@ -23,6 +23,7 @@ export function serializeCharacter(sheet: CharacterSheet, state: CharacterState)
   line(`Alignment: ${sheet.alignment}`)
   if (sheet.deity) line(`Deity: ${sheet.deity}`)
   line(`Languages: ${sheet.languages.join(', ')}`)
+  if (sheet.aliases.length) line(`Aliases: ${sheet.aliases.join(', ')}`)
   if (sheet.otherProficiencies) line(`Other Proficiencies: ${sheet.otherProficiencies}`)
 
   line('', '## Ability Scores', '')
@@ -228,6 +229,7 @@ export function parseCharacter(md: string): { sheet: CharacterSheet; state: Char
     deity:             hKV['Deity'],
     languages:         (hKV['Languages'] ?? '').split(',').map(l => l.trim()).filter(Boolean),
     otherProficiencies: hKV['Other Proficiencies'] ?? '',
+    aliases: (hKV['Aliases'] ?? '').split(',').map(a => a.trim()).filter(Boolean),
 
     abilityScores: {
       str: num(abKV['STR']), dex: num(abKV['DEX']), con: num(abKV['CON']),

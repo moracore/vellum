@@ -1,6 +1,7 @@
 # Fido
 
 Player: Lucas
+Aliases: lucas, fido
 Class: Sorcerer
 Level: 2
 Race: Tiefling
@@ -48,10 +49,10 @@ Survival: none
 
 ## Combat
 
-Max HP: 10
-Current HP: 10
+Max HP: 12
+Current HP: 12
 Temp HP: 0
-AC: 10
+AC: 11
 Initiative: 0
 Speed: 30
 Hit Dice: 1d6

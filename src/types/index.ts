@@ -112,6 +112,7 @@ export interface CharacterSheet {
   // Languages & proficiencies
   languages: string[]
   otherProficiencies: string
+  aliases: string[]
 
   // Spellcasting
   spellcastingAbility?: Ability
