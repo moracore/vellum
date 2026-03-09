@@ -522,20 +522,25 @@ input, textarea, button { font-family: inherit; }
 }
 
 .stats-settings-btn {
+  /* Functional Fixes */
   position: fixed;
   right: 16px;
   bottom: calc(var(--nav-height) + 16px);
   z-index: 100;
-  width: auto;
-  margin: 0;
-  padding: 12px 20px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: var(--shadow-md);
-  color: var(--text-primary);
-  cursor: pointer;
   pointer-events: auto;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  letter-spacing: 0.03em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 24px;
+  border-radius: 8px;
+  transition: color 0.15s, background 0.15s;
 }
 
 .stats-settings-btn:active {
