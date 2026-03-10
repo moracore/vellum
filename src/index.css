@@ -111,6 +111,16 @@
 
 input, textarea { user-select: text; -webkit-user-select: text; }
 
+html {
+  font-size: 140%;
+}
+
+@media (max-aspect-ratio: 2/3) {
+  html {
+    font-size: 115%;
+  }
+}
+
 html, body, #root {
   height: 100%;
   overflow: hidden;
