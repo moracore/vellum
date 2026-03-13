@@ -73,7 +73,7 @@ export function getSpellSlotsForLevel(
   const idx = Math.min(Math.max(level, 1), 20) - 1
 
   if (className === 'Warlock') {
-    const [count, slotLevel] = WARLOCK_PACT[idx]
+    const [count] = WARLOCK_PACT[idx]
     if (count === 0) return []
     // Warlock has one tier of slots — preserve current if same level
     const prev = currentSlots[0]

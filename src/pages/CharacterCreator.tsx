@@ -88,7 +88,7 @@ function emptySkills(): Skills {
   const keys = ['acrobatics','animalHandling','arcana','athletics','deception','history',
     'insight','intimidation','investigation','medicine','nature','perception',
     'performance','persuasion','religion','sleightOfHand','stealth','survival'] as const
-  return Object.fromEntries(keys.map(k => [k, { proficient: false, expertise: false }])) as Skills
+  return Object.fromEntries(keys.map(k => [k, { proficient: false, expertise: false }])) as unknown as Skills
 }
 
 function getPrimaryAbilityKeys(primaryAbility: string): (keyof AbilityScores)[] {
@@ -210,11 +210,11 @@ export default function CharacterCreator({ onComplete, onBack }: Props) {
     const skills = emptySkills()
     const allProfSkills = [...new Set([...wizard.selectedSkills, ...(bg.skills as string[])])]
     for (const sk of allProfSkills) {
-      if (sk in skills) (skills as Record<string, { proficient: boolean; expertise: boolean }>)[sk].proficient = true
+      if (sk in skills) (skills as unknown as Record<string, { proficient: boolean; expertise: boolean }>)[sk].proficient = true
     }
     for (const t of allRaceTraits) {
       if (t.grantsSkill && (!t.minLevel || t.minLevel <= 1) && t.grantsSkill in skills) {
-        (skills as Record<string, { proficient: boolean; expertise: boolean }>)[t.grantsSkill].proficient = true
+        (skills as unknown as Record<string, { proficient: boolean; expertise: boolean }>)[t.grantsSkill].proficient = true
       }
     }
 
@@ -739,7 +739,7 @@ function ProficiencyStep({ wizard, update }: { wizard: WizardState; update: (p: 
     const has = wizard.selectedSkills.includes(skill)
     if (has) {
       update({ selectedSkills: wizard.selectedSkills.filter(s => s !== skill) })
-    } else if (wizard.selectedSkills.length < cls.skillCount) {
+    } else if (wizard.selectedSkills.length < cls!.skillCount) {
       update({ selectedSkills: [...wizard.selectedSkills, skill] })
     }
   }

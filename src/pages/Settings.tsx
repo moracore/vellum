@@ -109,7 +109,7 @@ export default function Settings({ onClose }: { onClose?: () => void }) {
   const [nameError, setNameError] = useState('')
 
   // ── Secret unlock: alternate between Appearance (theme) and Accent Color 5× ──
-  const [secretSeq, setSecretSeq] = useState<('theme' | 'accent')[]>([])
+  const [, setSecretSeq] = useState<('theme' | 'accent')[]>([])
   const [showAdmin, setShowAdmin] = useState(false)
 
   const logSecret = (type: 'theme' | 'accent') => {
