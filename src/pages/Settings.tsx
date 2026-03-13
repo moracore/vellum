@@ -3,6 +3,7 @@ import { useTheme } from '../context/ThemeContext'
 import { useCharacter } from '../context/CharacterContext'
 import { findCharacter } from '../data/characters'
 import { getSettings, saveSettings } from '../db'
+import DBAdmin from './DBAdmin'
 
 const ACCENT_PRESETS = [
   { name: 'Parchment',     value: '#c9a84c' },
@@ -107,6 +108,23 @@ export default function Settings({ onClose }: { onClose?: () => void }) {
   const [nameEditing, setNameEditing] = useState(false)
   const [nameError, setNameError] = useState('')
 
+  // ── Secret unlock: alternate between Appearance (theme) and Accent Color 5× ──
+  const [secretSeq, setSecretSeq] = useState<('theme' | 'accent')[]>([])
+  const [showAdmin, setShowAdmin] = useState(false)
+
+  const logSecret = (type: 'theme' | 'accent') => {
+    setSecretSeq(prev => {
+      const next = [...prev, type].slice(-5)
+      if (
+        next.length === 5 &&
+        next.every((v, i) => i === 0 || v !== next[i - 1])
+      ) {
+        setShowAdmin(true)
+      }
+      return next
+    })
+  }
+
   const previewHex = hslToHex(hSlider, sliderToS(sSlider), sliderToL(lSlider))
   const actualS = Math.round(sliderToS(sSlider))
   const actualL = Math.round(sliderToL(lSlider))
@@ -131,6 +149,10 @@ export default function Settings({ onClose }: { onClose?: () => void }) {
     setNameEditing(false)
     setNameInput('')
     setNameError('')
+  }
+
+  if (showAdmin) {
+    return <DBAdmin onClose={() => { setShowAdmin(false); setSecretSeq([]) }} />
   }
 
   return (
@@ -179,7 +201,7 @@ export default function Settings({ onClose }: { onClose?: () => void }) {
 
       {/* Appearance */}
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <p className="section-title">Appearance</p>
+        <p className="section-title" onClick={() => logSecret('theme')} style={{ cursor: 'default', userSelect: 'none' }}>Appearance</p>
         <div className="row-between">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {theme === 'dark' || theme === 'woodland' ? <MoonIcon /> : <SunIcon />}
@@ -202,8 +224,8 @@ export default function Settings({ onClose }: { onClose?: () => void }) {
         }}
       >
         <div className="row-between">
-          <p className="section-title">
-            Accent Color{woodlandLocked && <span style={{ textTransform: 'none', fontWeight: 400, fontSize: 11 }}> (locked by theme)</span>}
+          <p className="section-title" onClick={() => logSecret('accent')} style={{ cursor: 'default', userSelect: 'none' }}>
+            Accent Colour{woodlandLocked && <span style={{ textTransform: 'none', fontWeight: 400, fontSize: 11 }}> (locked by theme)</span>}
           </p>
           <div style={{
             width: 28, height: 28, borderRadius: '50%', flexShrink: 0,

@@ -123,6 +123,33 @@ export const CLASS_SPELL_LIST: Record<string, Record<number, string[]>> = {
     ],
   },
 
+  Cleric: {
+    0: [
+      'Guidance', 'Light', 'Mending', 'Resistance', 'Sacred Flame',
+      'Spare the Dying', 'Thaumaturgy', 'Toll the Dead', 'Word of Radiance',
+    ],
+    1: [
+      'Bane', 'Bless', 'Command', 'Create or Destroy Water', 'Cure Wounds',
+      'Detect Evil and Good', 'Detect Magic', 'Detect Poison and Disease',
+      'Guiding Bolt', 'Healing Word', 'Inflict Wounds', 'Protection from Evil and Good',
+      'Purify Food and Drink', 'Sanctuary', 'Shield of Faith',
+    ],
+  },
+
+  Druid: {
+    0: [
+      'Control Flames', 'Create Bonfire', 'Druidcraft', 'Guidance', 'Gust',
+      'Infestation', 'Mending', 'Mold Earth', 'Poison Spray', 'Produce Flame',
+      'Resistance', 'Shape Water', 'Shillelagh', 'Thunderclap',
+    ],
+    1: [
+      'Animal Friendship', 'Charm Person', 'Create or Destroy Water', 'Cure Wounds',
+      'Detect Magic', 'Detect Poison and Disease', 'Entangle', 'Faerie Fire',
+      'Fog Cloud', 'Goodberry', 'Healing Word', 'Jump', 'Longstrider',
+      'Purify Food and Drink', 'Speak with Animals', 'Thunderwave',
+    ],
+  },
+
   Ranger: {
     1: [
       'Absorb Elements', 'Alarm', 'Animal Friendship', 'Cure Wounds',

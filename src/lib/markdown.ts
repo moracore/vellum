@@ -15,6 +15,7 @@ export function serializeCharacter(sheet: CharacterSheet, state: CharacterState)
   const line = (...s: string[]) => L.push(...s)
 
   line(`# ${sheet.characterName}`, '')
+  line(`Id: ${state.id}`)
   line(`Player: ${sheet.playerName}`)
   line(`Class: ${sheet.class}`)
   if (sheet.subclass) line(`Subclass: ${sheet.subclass}`)
@@ -25,7 +26,8 @@ export function serializeCharacter(sheet: CharacterSheet, state: CharacterState)
   line(`Languages: ${sheet.languages.join(', ')}`)
   if (sheet.aliases.length) line(`Aliases: ${sheet.aliases.join(', ')}`)
   if (sheet.otherProficiencies) line(`Other Proficiencies: ${sheet.otherProficiencies}`)
-  if (sheet.extraTraits.length) line(`Extra Traits: ${sheet.extraTraits.join(', ')}`)
+  if (sheet.raceTraits.length) line(`Race Traits: ${sheet.raceTraits.join(' | ')}`)
+  if (sheet.extraTraits.length) line(`Extra Traits: ${sheet.extraTraits.join(' | ')}`)
 
   line('', '## Ability Scores', '')
   const ab = sheet.abilityScores
@@ -230,7 +232,8 @@ export function parseCharacter(md: string): { sheet: CharacterSheet; state: Char
     deity:             hKV['Deity'],
     languages:         (hKV['Languages'] ?? '').split(',').map(l => l.trim()).filter(Boolean),
     otherProficiencies: hKV['Other Proficiencies'] ?? '',
-    extraTraits:       (hKV['Extra Traits'] ?? '').split(',').map(t => t.trim()).filter(Boolean),
+    raceTraits:        (hKV['Race Traits'] ?? '').split('|').map(t => t.trim()).filter(Boolean),
+    extraTraits:       (hKV['Extra Traits'] ?? '').split('|').map(t => t.trim()).filter(Boolean),
     aliases: (hKV['Aliases'] ?? '').split(',').map(a => a.trim()).filter(Boolean),
 
     abilityScores: {
@@ -287,7 +290,7 @@ export function parseCharacter(md: string): { sheet: CharacterSheet; state: Char
   }
 
   const state: CharacterState = {
-    id:                 characterName.toLowerCase(),
+    id:                 hKV['Id'] || characterName.toLowerCase(),
     currentHp:          sheet.currentHp,
     tempHp:             sheet.tempHp,
     deathSaveSuccesses: sheet.deathSaveSuccesses,
@@ -301,6 +304,97 @@ export function parseCharacter(md: string): { sheet: CharacterSheet; state: Char
   }
 
   return { sheet, state }
+}
+
+export function generateBlankMarkdown(id: string, characterName: string, playerName: string): string {
+  return `# ${characterName}
+
+Id: ${id}
+Player: ${playerName}
+Class:
+Level: 1
+Race:
+Alignment:
+Languages: Common
+
+## Ability Scores
+
+STR: 10
+DEX: 10
+CON: 10
+INT: 10
+WIS: 10
+CHA: 10
+
+## Saving Throws
+
+STR: false
+DEX: false
+CON: false
+INT: false
+WIS: false
+CHA: false
+
+## Skills
+
+Acrobatics: none
+Animal Handling: none
+Arcana: none
+Athletics: none
+Deception: none
+History: none
+Insight: none
+Intimidation: none
+Investigation: none
+Medicine: none
+Nature: none
+Perception: none
+Performance: none
+Persuasion: none
+Religion: none
+Sleight of Hand: none
+Stealth: none
+Survival: none
+
+## Combat
+
+Max HP: 0
+Current HP: 0
+Temp HP: 0
+AC: 10
+Initiative: 0
+Speed: 30
+Hit Dice: 1d8
+Proficiency Bonus: 2
+Death Save Successes: 0
+Death Save Failures: 0
+Conditions:
+
+## Spell Slots
+
+(none)
+
+## Spells
+
+(none)
+
+## Currency
+
+GP: 0
+SP: 0
+CP: 0
+
+## Items
+
+(none)
+
+## Notes
+
+(none)
+
+## Description
+
+(none)`
 }
 
 function spParsed(v: string | undefined) {

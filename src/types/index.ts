@@ -112,6 +112,7 @@ export interface CharacterSheet {
   // Languages & proficiencies
   languages: string[]
   otherProficiencies: string
+  raceTraits: string[]
   extraTraits: string[]
   aliases: string[]
 
@@ -137,7 +138,7 @@ export interface CharacterSheet {
 
 // Stored in IndexedDB — runtime mutable fields
 export interface CharacterState {
-  id: string // characterName lowercase
+  id: string // numeric timestamp string (or legacy characterName lowercase)
   currentHp: number
   tempHp: number
   deathSaveSuccesses: number

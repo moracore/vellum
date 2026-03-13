@@ -1,9 +1,11 @@
 import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from 'react'
 import type { CharacterSheet, CharacterState, Currency } from '../types'
-import { parseCharacter, serializeCharacter } from '../lib/markdown'
+import { parseCharacter, serializeCharacter, generateBlankMarkdown } from '../lib/markdown'
 import { getCharacterRecord, saveCharacterRecord } from '../db'
 import { pushCharacter, fetchCharacter, type PushSuccess } from '../lib/sync'
 import ConflictModal from '../components/ConflictModal'
+import { CLASS_FEATURES } from '../data/classFeatures'
+import { getSpellSlotsForLevel } from '../data/spellSlotTable'
 
 // ─── Conflict state ───────────────────────────────────────────────────────────
 
@@ -25,6 +27,8 @@ interface CharacterContextValue {
   conflict: ConflictState | null
   syncError: string | null
   loadCharacter: (id: string) => Promise<void>
+  createCharacter: (characterName: string, playerName: string) => Promise<void>
+  createCharacterFull: (sheet: CharacterSheet, state: CharacterState) => Promise<void>
   updateHp: (current: number, temp: number) => void
   useSpellSlot: (level: number) => void
   toggleDeathSave: (type: 'success' | 'failure') => void
@@ -33,13 +37,17 @@ interface CharacterContextValue {
   updateNotes: (notes: string) => void
   updateSpells: (spells: CharacterSheet['spells']) => void
   updateChoices: (choices: Record<string, string>) => void
+  updateExtraTraits: (traits: string[]) => void
   updateDescription: (description: string) => void
   recordDeathSave: (type: 'success' | 'failure') => void
   stabilize: () => void
   longRest: () => void
   applyMarkdown: (md: string) => void
   setDmMode: (val: boolean) => void
+  triggerLevelUp: () => void
   clearLevelUp: () => void
+  updateMaxHp: (newMax: number) => void
+  updateAbilityScores: (scores: import('../types').AbilityScores) => void
   resolveConflict: (choice: 'local' | 'server') => Promise<void>
   dismissSyncError: () => void
 }
@@ -139,6 +147,32 @@ export function CharacterProvider({ children }: { children: ReactNode }) {
         localUpdatedAt:  record.updatedAt,
       })
     }
+  }, [])
+
+  // ── Create a new blank character (opens in DM mode for editing)
+
+  const createCharacter = useCallback(async (characterName: string, playerName: string) => {
+    const id  = Date.now().toString()
+    const md  = generateBlankMarkdown(id, characterName, playerName)
+    const now = new Date().toISOString()
+    await saveCharacterRecord({ id, markdown: md, updatedAt: now, synced: false })
+    const { sheet: s, state: st } = parseCharacter(md)
+    syncSheet(s)
+    syncState(st)
+    setRawMarkdown(md)
+    setDmMode(true)
+  }, [])
+
+  // ── Create a fully built character (wizard flow — no DM mode)
+
+  const createCharacterFull = useCallback(async (s: CharacterSheet, st: CharacterState) => {
+    const md  = serializeCharacter(s, st)
+    const now = new Date().toISOString()
+    await saveCharacterRecord({ id: st.id, markdown: md, updatedAt: now, synced: false })
+    syncSheet(s)
+    syncState(st)
+    setRawMarkdown(md)
+    void pushCharacter(st.id, md, now).catch(() => {})
   }, [])
 
   // ── Conflict resolution
@@ -246,6 +280,14 @@ export function CharacterProvider({ children }: { children: ReactNode }) {
     persist(next, stateRef.current)
   }, [persist])
 
+  const updateExtraTraits = useCallback((traits: string[]) => {
+    const prev = sheetRef.current
+    if (!prev || !stateRef.current) return
+    const next = { ...prev, extraTraits: traits }
+    syncSheet(next)
+    persist(next, stateRef.current)
+  }, [persist])
+
   const updateDescription = useCallback((description: string) => {
     const prev = stateRef.current
     if (!prev || !sheetRef.current) return
@@ -289,26 +331,93 @@ export function CharacterProvider({ children }: { children: ReactNode }) {
     persist(s, next)
   }, [persist])
 
+  const updateMaxHp = useCallback((newMax: number) => {
+    const s = sheetRef.current
+    const st = stateRef.current
+    if (!s || !st) return
+    const next = { ...s, maxHp: newMax }
+    syncSheet(next)
+    persist(next, st)
+  }, [persist])
+
+  const updateAbilityScores = useCallback((scores: import('../types').AbilityScores) => {
+    const s = sheetRef.current
+    const st = stateRef.current
+    if (!s || !st) return
+    const next = { ...s, abilityScores: scores }
+    syncSheet(next)
+    persist(next, st)
+  }, [persist])
+
+  const triggerLevelUp = useCallback(() => {
+    const s = sheetRef.current
+    const st = stateRef.current
+    if (!s || !st || s.level >= 20) return
+    const newLevel = s.level + 1
+    const newSlots = getSpellSlotsForLevel(s.class, newLevel, st.spellSlots)
+    const nextSheet = { ...s, level: newLevel }
+    const nextState = { ...st, spellSlots: newSlots }
+    syncSheet(nextSheet)
+    syncState(nextState)
+    persist(nextSheet, nextState)
+    setLevelUpMsg(`You have reached level ${newLevel}!`)
+  }, [persist])
+
   // applyMarkdown is called by DM Edit — re-parses a full markdown string
   const applyMarkdown = useCallback((md: string) => {
     const prevLevel = sheetRef.current?.level ?? 0
-    const { sheet: s, state: st } = parseCharacter(md)
+    let { sheet: s, state: st } = parseCharacter(md)
+
+    if (s.level < prevLevel) {
+      // Level decreased — strip features and choices added at levels > s.level
+      const classKey = Object.keys(CLASS_FEATURES).find(k => k.toLowerCase() === s.class.toLowerCase())
+      const allClassFeatures = classKey ? CLASS_FEATURES[classKey] : []
+
+      // Feature names added at levels above new level (exclude level 1, those are baked in at creation)
+      const removedFeatureNames = new Set(
+        allClassFeatures
+          .filter(f => f.level > s.level && f.level > 1 && !f.linkedChoice)
+          .map(f => f.name)
+      )
+
+      // Choice keys belonging to levels above new level (exclude level 1)
+      const removedChoiceKeys = new Set(
+        allClassFeatures
+          .filter(f => f.level > s.level && f.level > 1 && f.choice)
+          .map(f => f.choice!.key)
+      )
+
+      s = {
+        ...s,
+        extraTraits: s.extraTraits.filter(t => !removedFeatureNames.has(t.split(':')[0].trim())),
+        choices: Object.fromEntries(
+          Object.entries(s.choices).filter(([k]) => !removedChoiceKeys.has(k))
+        ),
+      }
+    }
+
+    // Always recompute spell slots from the table so DM level edits stay correct
+    const correctedSlots = getSpellSlotsForLevel(s.class, s.level, st.spellSlots)
+    const stCorrected = { ...st, spellSlots: correctedSlots }
+
     syncSheet(s)
-    syncState(st)
+    syncState(stCorrected)
     setRawMarkdown(md)
-    persist(s, st)
+    persist(s, stCorrected)
     if (s.level > prevLevel) {
-      setLevelUpMsg(`Congratulations! You have levelled up to LVL ${s.level}!`)
+      setLevelUpMsg(`You have reached level ${s.level}!`)
     }
   }, [persist])
 
   return (
     <CharacterContext.Provider value={{
       sheet, state, rawMarkdown, dmMode, levelUpMsg, conflict, syncError,
-      loadCharacter, updateHp, useSpellSlot, toggleDeathSave,
+      loadCharacter, createCharacter, createCharacterFull, updateHp, useSpellSlot, toggleDeathSave,
       updateCurrency, updateItems, updateNotes, updateSpells, updateChoices,
-      updateDescription, recordDeathSave, stabilize, longRest,
-      applyMarkdown, setDmMode, clearLevelUp, resolveConflict, dismissSyncError,
+      updateExtraTraits, updateDescription, recordDeathSave, stabilize, longRest,
+      applyMarkdown, setDmMode, triggerLevelUp, clearLevelUp,
+      updateMaxHp, updateAbilityScores,
+      resolveConflict, dismissSyncError,
     }}>
       {children}
       {conflict && (

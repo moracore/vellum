@@ -89,3 +89,8 @@ export async function saveCharacterRecord(record: CharacterRecord): Promise<void
   const db = await getDB()
   await db.put('characters', record)
 }
+
+export async function deleteCharacterRecord(id: string): Promise<void> {
+  const db = await getDB()
+  await db.delete('characters', id)
+}

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { findCharacter } from '../data/characters'
 import { useCharacter } from '../context/CharacterContext'
+import CharacterCreator from './CharacterCreator'
 
 interface Props {
   onLoaded: () => void
@@ -8,11 +9,12 @@ interface Props {
 
 export default function CharacterSelect({ onLoaded }: Props) {
   const { loadCharacter } = useCharacter()
+  const [mode, setMode]     = useState<'find' | 'create'>('find')
   const [query, setQuery]   = useState('')
   const [error, setError]   = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleFind = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
@@ -31,13 +33,34 @@ export default function CharacterSelect({ onLoaded }: Props) {
     }
   }
 
+  if (mode === 'create') {
+    return <CharacterCreator onComplete={onLoaded} onBack={() => setMode('find')} />
+  }
+
   return (
     <div className="select-screen">
       <div className="select-card">
         <div className="select-scroll" />
         <h1 className="select-title">Vellum</h1>
+
+        <div className="select-tabs">
+          <button
+            className="select-tab select-tab--active"
+            type="button"
+          >
+            Find Character
+          </button>
+          <button
+            className="select-tab"
+            onClick={() => setMode('create')}
+            type="button"
+          >
+            New Character
+          </button>
+        </div>
+
         <p className="select-subtitle">Enter your name or character name</p>
-        <form onSubmit={handleSubmit} className="select-form">
+        <form onSubmit={handleFind} className="select-form">
           <input
             className="select-input"
             type="text"

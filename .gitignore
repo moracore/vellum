@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Cloudflare Worker secrets — NEVER commit these
+worker/.dev.vars
+.dev.vars
+worker/.wrangler/

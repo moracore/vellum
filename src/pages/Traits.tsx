@@ -3,6 +3,7 @@ import { useCharacter } from '../context/CharacterContext'
 import CharacterHeader from '../components/CharacterHeader'
 import { CLASS_FEATURES } from '../data/classFeatures'
 import { CHOICE_DESCRIPTIONS } from '../data/choiceDescriptions'
+import { RACES } from '../data/races5e'
 import type { Currency } from '../types'
 
 const CURRENCY_KEYS: { key: keyof Currency; label: string; color: string }[] = [
@@ -12,10 +13,9 @@ const CURRENCY_KEYS: { key: keyof Currency; label: string; color: string }[] = [
 ]
 
 export default function Traits({ hideHeader }: { hideHeader?: boolean } = {}) {
-  const { sheet, state, updateChoices, updateCurrency, updateItems } = useCharacter()
+  const { sheet, state, updateCurrency, updateItems } = useCharacter()
   const [coinEdit, setCoinEdit] = useState<keyof Currency | null>(null)
   const [coinInput, setCoinInput] = useState('')
-  const [pending, setPending] = useState<{ key: string; option: string } | null>(null)
 
   if (!sheet || !state) return null
 
@@ -29,20 +29,28 @@ export default function Traits({ hideHeader }: { hideHeader?: boolean } = {}) {
   const mainFeatures = features.filter(f => !f.linkedChoice)
   const linkedFeatures = features.filter(f => f.linkedChoice)
 
-  const handleOptionTap = (choiceKey: string, option: string) => {
-    if (sheet.choices[choiceKey]) return // locked
-    if (pending?.key === choiceKey && pending.option === option) {
-      setPending(null)
-    } else {
-      setPending({ key: choiceKey, option })
-    }
-  }
+  // Names to strip from legacy extraTraits: class features + subrace-choice placeholders
+  const classFeatureNames = new Set(allFeatures.map(f => f.name))
+  const raceData = RACES.find(r => r.name === sheet.race)
+  const subraceChoiceNames = new Set(
+    (raceData?.traits ?? []).filter(t => t.isSubraceChoice).map(t => t.name)
+  )
 
-  const confirmChoice = () => {
-    if (!pending) return
-    updateChoices({ ...sheet.choices, [pending.key]: pending.option })
-    setPending(null)
-  }
+  // For characters created before raceTraits existed, extraTraits may contain race/class content.
+  // Filter class features and subrace-choice placeholders out so they don't appear twice or wrongly.
+  // Never filter proficiency entries.
+  const profPrefixes = new Set(['Weapon Proficiencies', 'Armour Proficiencies', 'Tool Proficiencies'])
+  const cleanedExtras = (sheet.extraTraits ?? []).filter(entry => {
+    const name = entry.split(':')[0].trim()
+    if (profPrefixes.has(name)) return true
+    return !classFeatureNames.has(name) && !subraceChoiceNames.has(name)
+  })
+
+  // If raceTraits field exists and is populated, use it; otherwise fall back to cleaned extras as race traits.
+  const displayRaceTraits = (sheet.raceTraits ?? []).length > 0
+    ? sheet.raceTraits
+    : cleanedExtras
+  const displayExtraTraits = (sheet.raceTraits ?? []).length > 0 ? cleanedExtras : []
 
   const commitCoin = (key: keyof Currency) => {
     const v = parseInt(coinInput)
@@ -59,14 +67,28 @@ export default function Traits({ hideHeader }: { hideHeader?: boolean } = {}) {
       </div>
 
       <div className="traits-list">
-        {sheet.extraTraits.map((name, i) => (
-          <div key={`extra-${i}`} className="trait-card">
-            <div className="trait-title-row">
-              <span className="trait-name">{name}</span>
-              <span className="trait-level">Background</span>
-            </div>
-          </div>
-        ))}
+
+        {/* ── Race Traits ── */}
+        {displayRaceTraits.length > 0 && (
+          <>
+            <div className="traits-section-header">Race Traits</div>
+            {displayRaceTraits.map((name, i) => {
+              const [title, ...rest] = name.split(': ')
+              return (
+                <div key={`race-${i}`} className="trait-card">
+                  <div className="trait-title-row">
+                    <span className="trait-name">{title}</span>
+                    <span className="trait-level">{sheet.race}</span>
+                  </div>
+                  {rest.length > 0 && <div className="trait-desc">{rest.join(': ')}</div>}
+                </div>
+              )
+            })}
+          </>
+        )}
+
+        {/* ── Class Traits ── */}
+        <div className="traits-section-header">Class Traits</div>
         {mainFeatures.length === 0 ? (
           <div className="trait-no-class">
             {sheet.class ? `No features found for ${sheet.class}.` : 'No class set.'}
@@ -74,9 +96,6 @@ export default function Traits({ hideHeader }: { hideHeader?: boolean } = {}) {
         ) : (
           mainFeatures.map((f, i) => {
             const confirmed = f.choice ? sheet.choices[f.choice.key] : undefined
-            const isPending = f.choice && pending?.key === f.choice.key
-            const previewOption = isPending ? pending!.option : undefined
-            const pendingDesc = previewOption ? CHOICE_DESCRIPTIONS[previewOption] : undefined
 
             // Sub-features linked to this choice
             const subfeatures = f.choice
@@ -90,7 +109,6 @@ export default function Traits({ hideHeader }: { hideHeader?: boolean } = {}) {
                   <span className="trait-level">Lv {f.level}</span>
                 </div>
 
-                {/* If choice is confirmed, replace description with choice result */}
                 {confirmed ? (
                   <>
                     <div className="trait-confirmed">
@@ -102,7 +120,6 @@ export default function Traits({ hideHeader }: { hideHeader?: boolean } = {}) {
                         {CHOICE_DESCRIPTIONS[confirmed]}
                       </p>
                     )}
-                    {/* Show linked subclass features */}
                     {subfeatures.length > 0 && (
                       <div className="trait-subfeatures">
                         {subfeatures.map((sf, j) => (
@@ -115,51 +132,31 @@ export default function Traits({ hideHeader }: { hideHeader?: boolean } = {}) {
                     )}
                   </>
                 ) : (
-                  <>
-                    <div className="trait-desc">{f.description}</div>
-                    {f.choice && (
-                      <div className="trait-choice">
-                        <div className="trait-choice-label">{f.choice.label}</div>
-                        <div className="trait-options">
-                          {f.choice.options.map(opt => (
-                            <button
-                              key={opt}
-                              className={`trait-option ${previewOption === opt ? 'previewing' : ''}`}
-                              onClick={() => handleOptionTap(f.choice!.key, opt)}
-                            >
-                              {opt}
-                            </button>
-                          ))}
-                        </div>
-                        {isPending && (
-                          <div className="trait-preview">
-                            {pendingDesc && (
-                              <p className="trait-preview-desc">{pendingDesc}</p>
-                            )}
-                            <button className="trait-confirm-btn" onClick={confirmChoice}>
-                              Confirm — {previewOption}
-                            </button>
-                          </div>
-                        )}
-                        {/* Preview future subclass features */}
-                        {subfeatures.length > 0 && (
-                          <div className="trait-subfeatures" style={{ opacity: 0.45 }}>
-                            {subfeatures.map((sf, j) => (
-                              <div key={j} className="trait-subfeature">
-                                <span className="trait-subfeature-lv">Lv {sf.level}</span>
-                                <span className="trait-subfeature-name">Subclass Feature</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </>
+                  <div className="trait-desc">{f.description}</div>
                 )}
               </div>
             )
           })
         )}
+
+        {/* ── Extra Traits ── */}
+        {displayExtraTraits.length > 0 && (
+          <>
+            <div className="traits-section-header">Extra Traits</div>
+            {displayExtraTraits.map((name, i) => {
+              const [title, ...rest] = name.split(': ')
+              return (
+                <div key={`extra-${i}`} className="trait-card">
+                  <div className="trait-title-row">
+                    <span className="trait-name">{title}</span>
+                  </div>
+                  {rest.length > 0 && <div className="trait-desc">{rest.join(': ')}</div>}
+                </div>
+              )
+            })}
+          </>
+        )}
+
       </div>
 
       {/* Currency + Items */}

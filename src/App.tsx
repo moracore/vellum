@@ -33,17 +33,7 @@ function useBreakpoint() {
   return bp
 }
 
-function LevelUpOverlay({ msg, onDismiss }: { msg: string; onDismiss: () => void }) {
-  return (
-    <div className="levelup-overlay" onClick={onDismiss}>
-      <div className="levelup-card" onClick={e => e.stopPropagation()}>
-        <div className="levelup-title">Level Up!</div>
-        <p className="levelup-msg">{msg}</p>
-        <button className="levelup-btn" onClick={onDismiss}>Awesome!</button>
-      </div>
-    </div>
-  )
-}
+import LevelUpModal from './components/LevelUpModal'
 
 function Shell() {
   const { sheet, dmMode, setDmMode, loadCharacter, levelUpMsg, clearLevelUp } = useCharacter()
@@ -108,7 +98,13 @@ function Shell() {
   )
 
   const openSettings = () => setShowSettings(true)
-  const overlay = levelUpMsg ? <LevelUpOverlay msg={levelUpMsg} onDismiss={clearLevelUp} /> : null
+  const overlay = (levelUpMsg && sheet) ? (
+    <LevelUpModal
+      newLevel={sheet.level}
+      className={sheet.class}
+      onDismiss={clearLevelUp}
+    />
+  ) : null
 
   if (isDying) {
     return (

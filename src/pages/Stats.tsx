@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Settings as SettingsIcon } from 'lucide-react'
 import { useCharacter } from '../context/CharacterContext'
 import type { Ability } from '../types'
@@ -54,10 +54,12 @@ interface Props {
 }
 
 export default function Stats({ onOpenSettings, onDying }: Props) {
-  const { sheet, state, updateHp, updateDescription, longRest, setDmMode } = useCharacter()
+  const { sheet, state, updateHp, updateDescription, longRest, setDmMode, triggerLevelUp } = useCharacter()
   const [hpEdit, setHpEdit] = useState<'cur' | 'tmp' | null>(null)
   const [hpInput, setHpInput] = useState('')
   const [dmPos, setDmPos] = useState(0)
+  const lvlTapCount = useRef(0)
+  const lvlTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [restPos, setRestPos] = useState(0)
   const [showZeroModal, setShowZeroModal] = useState(false)
   const [restToast, setRestToast] = useState(false)
@@ -88,8 +90,19 @@ export default function Stats({ onOpenSettings, onDying }: Props) {
 
   const handleAbilityTap = (key: Ability) => {
     advanceDm(key)
-    if (key === 'str') advanceRest('str')
-    else if (REST_SEQ[restPos] === 'str') setRestPos(0) // wrong key, reset rest
+    if (key === 'str') {
+      advanceRest('str')
+      lvlTapCount.current += 1
+      if (lvlTapTimer.current) clearTimeout(lvlTapTimer.current)
+      if (lvlTapCount.current >= 30) {
+        lvlTapCount.current = 0
+        triggerLevelUp()
+      } else {
+        lvlTapTimer.current = setTimeout(() => { lvlTapCount.current = 0 }, 3000)
+      }
+    } else if (REST_SEQ[restPos] === 'str') {
+      setRestPos(0) // wrong key, reset rest
+    }
   }
 
   if (!sheet || !state) return null
