@@ -568,11 +568,8 @@ input, textarea, button { font-family: inherit; }
   right: 0.7rem;
   bottom: calc(var(--nav-height) + 0.7rem);
   z-index: 100;
-  /* Keeps button on top of everything */
   pointer-events: auto;
-  /* Correct: re-enables clicking the button */
 
-  /* Your design */
   background: none;
   border: none;
   color: var(--text-muted);
@@ -592,6 +589,7 @@ input, textarea, button { font-family: inherit; }
   color: var(--accent);
   background: rgba(255, 255, 255, 0.05);
 }
+
 
 /* Top header */
 .sheet-header {
@@ -1093,6 +1091,47 @@ input, textarea, button { font-family: inherit; }
   gap: 0.4375rem;
   height: 100%;
   box-sizing: border-box;
+}
+
+.notes-save-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.notes-save-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-tertiary);
+  border: 0.04375rem solid var(--border);
+  border-radius: 0.4rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.notes-save-btn:active {
+  background: var(--bg-secondary);
+}
+
+.notes-save-btn[disabled] {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.notes-save-btn.saved {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.notes-save-btn.error {
+  color: #e05555;
+  border-color: #e05555;
 }
 
 /* ── Spells ─────────────────────────────────────────────────────── */

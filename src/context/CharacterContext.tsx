@@ -50,6 +50,8 @@ interface CharacterContextValue {
   updateAbilityScores: (scores: import('../types').AbilityScores) => void
   resolveConflict: (choice: 'local' | 'server') => Promise<void>
   dismissSyncError: () => void
+  saveNotesLocal: (notes: string) => Promise<void>
+  saveNotesCloud: (notes: string) => Promise<boolean>
 }
 
 const CharacterContext = createContext<CharacterContextValue | null>(null)
@@ -208,6 +210,55 @@ export function CharacterProvider({ children }: { children: ReactNode }) {
     }
 
     syncConflict(null)
+  }, [])
+
+  // ── Notes-specific save functions ─────────────────────────────────────────────
+
+  const saveNotesLocal = useCallback(async (notes: string): Promise<void> => {
+    const prev = stateRef.current
+    const s    = sheetRef.current
+    if (!prev || !s) return
+    const next = { ...prev, notes }
+    syncState(next)
+    const md  = serializeCharacter(s, next)
+    const now = new Date().toISOString()
+    setRawMarkdown(md)
+    await saveCharacterRecord({ id: next.id, markdown: md, updatedAt: now, synced: false })
+  }, [])
+
+  const saveNotesCloud = useCallback(async (notes: string): Promise<boolean> => {
+    const prev = stateRef.current
+    const s    = sheetRef.current
+    if (!prev || !s) return false
+    const next = { ...prev, notes }
+    syncState(next)
+    const md  = serializeCharacter(s, next)
+    const now = new Date().toISOString()
+    setRawMarkdown(md)
+    await saveCharacterRecord({ id: next.id, markdown: md, updatedAt: now, synced: false })
+    try {
+      const result = await pushCharacter(next.id, md, now)
+      if ('conflict' in result) {
+        await saveCharacterRecord({
+          id: next.id, markdown: md, updatedAt: now, synced: false,
+          conflictServerMarkdown:  result.server_markdown,
+          conflictServerUpdatedAt: result.server_updated_at,
+        })
+        syncConflict({
+          characterId:     next.id,
+          serverMarkdown:  result.server_markdown,
+          serverUpdatedAt: result.server_updated_at,
+          localUpdatedAt:  now,
+        })
+        return false
+      }
+      await saveCharacterRecord({ id: next.id, markdown: md, updatedAt: (result as PushSuccess).updated_at, synced: true })
+      setSyncError(null)
+      return true
+    } catch {
+      setSyncError('Sync failed — changes saved locally.')
+      return false
+    }
   }, [])
 
   // ── Mutation helpers (all call persist) ──────────────────────────────────────
@@ -417,7 +468,7 @@ export function CharacterProvider({ children }: { children: ReactNode }) {
       updateExtraTraits, updateDescription, recordDeathSave, stabilize, longRest,
       applyMarkdown, setDmMode, triggerLevelUp, clearLevelUp,
       updateMaxHp, updateAbilityScores,
-      resolveConflict, dismissSyncError,
+      resolveConflict, dismissSyncError, saveNotesLocal, saveNotesCloud,
     }}>
       {children}
       {conflict && (
