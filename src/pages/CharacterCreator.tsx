@@ -11,6 +11,18 @@ import { findSpell } from '../data/spells'
 
 type WizardStep = 'class' | 'subclass' | 'race' | 'subrace' | 'background' | 'abilities' | 'proficiency' | 'spells' | 'items' | 'name' | 'review'
 
+interface ArmorChoice {
+  label: string
+  acType: 'light' | 'medium' | 'heavy' | 'unarmored_con' | 'unarmored_wis' | 'none'
+  note?: string   // extra info shown under the option, e.g. "+ Longbow & 20 Arrows"
+}
+
+interface WeaponChoice {
+  label: string   // display name, e.g. "Longsword & Shield"
+  items: string   // what gets written into the items field
+  style?: string  // short flavor tag, e.g. "Two-handed"
+}
+
 interface WizardState {
   step: WizardStep
   selectedClass: string | null
@@ -22,6 +34,8 @@ interface WizardState {
   selectedCantrips: string[]
   selectedSpells: string[]
   selectedBackground: string | null
+  selectedArmor: string | null    // label of chosen armour option (null = no choice / class has no choice)
+  selectedWeapons: string | null  // label of chosen weapon loadout
   characterName: string
   playerName: string
 }
@@ -50,6 +64,115 @@ const SKILL_DISPLAY: Record<string, string> = {
   medicine: 'Medicine', nature: 'Nature', perception: 'Perception',
   performance: 'Performance', persuasion: 'Persuasion', religion: 'Religion',
   sleightOfHand: 'Sleight of Hand', stealth: 'Stealth', survival: 'Survival',
+}
+
+// Classes that let the player choose their starting armour.
+// Keyed by class name; the chosen option's acType overrides cls.acType for AC calculation.
+const CLASS_ARMOR_CHOICES: Record<string, ArmorChoice[]> = {
+  Fighter: [
+    { label: 'Chain Mail',    acType: 'heavy' },
+    { label: 'Leather Armour', acType: 'light', note: '+ Longbow & 20 Arrows' },
+  ],
+  Cleric: [
+    { label: 'Chain Mail',           acType: 'heavy' },
+    { label: 'Leather Armour + Shield', acType: 'light' },
+  ],
+  Ranger: [
+    { label: 'Scale Mail',    acType: 'medium' },
+    { label: 'Leather Armour', acType: 'light' },
+  ],
+}
+
+// Starting weapon loadout options per class.
+const CLASS_WEAPON_CHOICES: Record<string, WeaponChoice[]> = {
+  Barbarian: [
+    { label: 'Greataxe',    items: 'Greataxe, 4 Handaxes',          style: 'Heavy hitter' },
+    { label: '2 Handaxes',  items: '2 Handaxes, 4 Javelins',         style: 'Mobile & throwing' },
+    { label: 'Longsword',   items: 'Longsword, 4 Javelins',          style: 'Versatile' },
+    { label: 'Warhammer',   items: 'Warhammer, 4 Handaxes',          style: 'Blunt force' },
+  ],
+  Bard: [
+    { label: 'Rapier',              items: 'Rapier',                       style: 'Finesse' },
+    { label: 'Longsword',           items: 'Longsword',                    style: 'Versatile' },
+    { label: 'Shortsword',          items: 'Shortsword',                   style: 'Light & fast' },
+    { label: 'Hand Crossbow',       items: 'Hand Crossbow, 20 Bolts',      style: 'Ranged' },
+  ],
+  Cleric: [
+    { label: 'Mace',                items: 'Mace',                         style: 'Classic' },
+    { label: 'Warhammer',           items: 'Warhammer',                    style: 'Versatile' },
+    { label: 'Quarterstaff',        items: 'Quarterstaff',                 style: 'Simple & sturdy' },
+    { label: 'Morningstar',         items: 'Morningstar',                  style: 'Martial' },
+  ],
+  Druid: [
+    { label: 'Scimitar',            items: 'Scimitar',                     style: 'Finesse' },
+    { label: 'Quarterstaff',        items: 'Quarterstaff',                 style: 'Versatile' },
+    { label: 'Handaxe',             items: 'Handaxe',                      style: 'Simple' },
+    { label: 'Spear',               items: 'Spear',                        style: 'Reach option' },
+  ],
+  Fighter: [
+    { label: 'Longsword & Shield',  items: 'Longsword, Shield',            style: 'Sword-and-board' },
+    { label: '2 Shortswords',       items: '2 Shortswords',                style: 'Dual wield' },
+    { label: 'Warhammer & Shield',  items: 'Warhammer, Shield',            style: 'Defensive' },
+    { label: 'Greataxe',            items: 'Greataxe',                     style: 'Two-handed' },
+  ],
+  Monk: [
+    { label: 'Shortsword',          items: 'Shortsword',                   style: 'Classic monk' },
+    { label: 'Quarterstaff',        items: 'Quarterstaff',                 style: 'Versatile' },
+    { label: 'Handaxe',             items: 'Handaxe',                      style: 'Light' },
+    { label: 'Spear',               items: 'Spear',                        style: 'Reach option' },
+  ],
+  Paladin: [
+    { label: 'Longsword',           items: 'Longsword',                    style: 'Classic knight' },
+    { label: 'Warhammer',           items: 'Warhammer',                    style: 'Blunt force' },
+    { label: 'Morningstar',         items: 'Morningstar',                  style: 'Martial' },
+    { label: 'Battleaxe',           items: 'Battleaxe',                    style: 'Versatile' },
+  ],
+  Ranger: [
+    { label: '2 Shortswords + Shortbow',  items: '2 Shortswords, Shortbow, 20 Arrows',  style: 'Dual melee + bow' },
+    { label: '2 Shortswords + Longbow',   items: '2 Shortswords, Longbow, 20 Arrows',   style: 'Dual melee + longbow' },
+    { label: 'Longsword + Shortbow',      items: 'Longsword, Shortbow, 20 Arrows',      style: 'Versatile + bow' },
+    { label: 'Longsword + Longbow',       items: 'Longsword, Longbow, 20 Arrows',       style: 'Versatile + longbow' },
+  ],
+  Rogue: [
+    { label: 'Rapier + Shortbow',         items: 'Rapier, Shortbow, 20 Arrows',         style: 'Classic rogue' },
+    { label: 'Rapier + Hand Crossbow',    items: 'Rapier, Hand Crossbow, 20 Bolts',     style: 'Finesse + crossbow' },
+    { label: 'Shortsword + Shortbow',     items: 'Shortsword, Shortbow, 20 Arrows',     style: 'Light weapons' },
+    { label: '2 Shortswords',             items: '2 Shortswords',                        style: 'Dual wield' },
+  ],
+  Sorcerer: [
+    { label: 'Light Crossbow',      items: 'Light Crossbow, 20 Bolts',     style: 'Ranged backup' },
+    { label: '2 Daggers',           items: '2 Daggers',                    style: 'Thrown option' },
+    { label: 'Quarterstaff',        items: 'Quarterstaff',                 style: 'Classic caster' },
+    { label: 'Spear',               items: 'Spear',                        style: 'Reach option' },
+  ],
+  Warlock: [
+    { label: 'Light Crossbow',      items: 'Light Crossbow, 20 Bolts',     style: 'Ranged backup' },
+    { label: 'Quarterstaff',        items: 'Quarterstaff',                 style: 'Classic caster' },
+    { label: 'Shortsword',          items: 'Shortsword',                   style: 'Light & quick' },
+    { label: 'Spear',               items: 'Spear',                        style: 'Reach option' },
+  ],
+  Wizard: [
+    { label: 'Quarterstaff',        items: 'Quarterstaff',                 style: 'Classic wizard' },
+    { label: 'Dagger',              items: 'Dagger',                       style: 'Concealed' },
+    { label: 'Light Crossbow',      items: 'Light Crossbow, 20 Bolts',     style: 'Ranged' },
+  ],
+}
+
+// Non-choice starting items per class (written directly to the items field).
+// For classes with armor/weapon choices, those are excluded here and built from wizard selections.
+const CLASS_FIXED_ITEMS: Record<string, string> = {
+  Barbarian:  "Explorer's Pack, 15 gp",
+  Bard:       "Leather Armour, 2 Daggers, Musical Instrument, Entertainer's Pack, 15 gp",
+  Cleric:     "Holy Symbol, Priest's Pack, 7 gp",
+  Druid:      "Leather Armour, Shield, Druidic Focus, Explorer's Pack, 9 gp",
+  Fighter:    "Light Crossbow, 20 Bolts, Dungeoneer's Pack, 4 gp",
+  Monk:       "Dungeoneer's Pack, 5 Darts",
+  Paladin:    "Chain Mail, Shield, 5 Javelins, Holy Symbol, Priest's Pack, 9 gp",
+  Ranger:     "Dungeoneer's Pack, 7 gp",
+  Rogue:      "Leather Armour, 2 Daggers, Thieves' Tools, Burglar's Pack, 8 gp",
+  Sorcerer:   "Arcane Focus, Dungeoneer's Pack, 8 gp",
+  Warlock:    "Leather Armour, Arcane Focus, 2 Daggers, Dungeoneer's Pack, 15 gp",
+  Wizard:     "Arcane Focus, Scholar's Pack, Spellbook, 4 gp",
 }
 
 const STEP_TITLES: Record<WizardStep, string> = {
@@ -132,6 +255,8 @@ export default function CharacterCreator({ onComplete, onBack }: Props) {
     selectedCantrips: [],
     selectedSpells: [],
     selectedBackground: null,
+    selectedArmor: null,
+    selectedWeapons: null,
     characterName: '',
     playerName: '',
   })
@@ -176,7 +301,13 @@ export default function CharacterCreator({ onComplete, onBack }: Props) {
         if (needSpells && wizard.selectedSpells.length !== sc.spellsAtL1) return false
         return true
       }
-      case 'items':  return true
+      case 'items': {
+        const armorChoices  = cls ? CLASS_ARMOR_CHOICES[cls.name]  : undefined
+        const weaponChoices = cls ? CLASS_WEAPON_CHOICES[cls.name] : undefined
+        if (armorChoices  && wizard.selectedArmor   === null) return false
+        if (weaponChoices && wizard.selectedWeapons === null) return false
+        return true
+      }
       case 'name':   return wizard.characterName.trim().length > 0
       case 'review': return !saving
       default:       return true
@@ -199,7 +330,9 @@ export default function CharacterCreator({ onComplete, onBack }: Props) {
     const hp         = cls.hitDie + mod(finalScores.con)
     const initiative = mod(finalScores.dex)
     const speed      = subraceData?.speedOverride ?? raceData.speed
-    const ac         = calcAc(cls.acType, finalScores)
+    const armorChoicesForClass = CLASS_ARMOR_CHOICES[cls.name]
+    const chosenArmor = armorChoicesForClass?.find(a => a.label === wizard.selectedArmor)
+    const ac         = calcAc(chosenArmor?.acType ?? cls.acType, finalScores)
 
     const saves = { str: false, dex: false, con: false, int: false, wis: false, cha: false }
     for (const key of cls.savingThrows) (saves as Record<string, boolean>)[key] = true
@@ -238,7 +371,15 @@ export default function CharacterCreator({ onComplete, onBack }: Props) {
       ...(cls.toolProf ? [`Tool Proficiencies: ${cls.toolProf}`] : []),
     ]
 
-    const items   = `${cls.startingEquipment}\n${bg.startingEquipment}`
+    const chosenWeapon = CLASS_WEAPON_CHOICES[cls.name]?.find(w => w.label === wizard.selectedWeapons)
+    const itemLines: string[] = []
+    if (chosenArmor)  itemLines.push(chosenArmor.label)
+    if (chosenWeapon) itemLines.push(chosenWeapon.items)
+    const fixedClassItems = CLASS_FIXED_ITEMS[cls.name]
+    if (fixedClassItems) itemLines.push(fixedClassItems)
+    else itemLines.push(cls.startingEquipment)  // fallback for any class not in the map
+    itemLines.push(bg.startingEquipment)
+    const items = itemLines.join('\n')
     const choices: Record<string, string> = { 'Origin Feat': bg.feat }
     if (wizard.selectedSubclass) choices['subclass'] = wizard.selectedSubclass
 
@@ -318,7 +459,7 @@ export default function CharacterCreator({ onComplete, onBack }: Props) {
         {wizard.step === 'abilities'   && <AbilitiesStep    wizard={wizard} update={update} />}
         {wizard.step === 'proficiency' && <ProficiencyStep  wizard={wizard} update={update} />}
         {wizard.step === 'spells'      && <SpellsStep       wizard={wizard} update={update} />}
-        {wizard.step === 'items'       && <ItemsStep        wizard={wizard} />}
+        {wizard.step === 'items'       && <ItemsStep        wizard={wizard} update={update} />}
         {wizard.step === 'name'        && <NameStep         wizard={wizard} update={update} />}
         {wizard.step === 'review'      && <ReviewStep       wizard={wizard} />}
       </div>
@@ -344,7 +485,7 @@ function ClassStep({ wizard, update }: { wizard: WizardState; update: (p: Partia
   const [expanded, setExpanded] = useState<string | null>(wizard.selectedClass)
 
   function selectClass(name: string) {
-    update({ selectedClass: name, selectedSkills: [], selectedCantrips: [], selectedSpells: [] })
+    update({ selectedClass: name, selectedSkills: [], selectedCantrips: [], selectedSpells: [], selectedArmor: null, selectedWeapons: null })
     setExpanded(name)
   }
 
@@ -1042,27 +1183,82 @@ function SpellsStep({ wizard, update }: { wizard: WizardState; update: (p: Parti
 
 // ── Step: Items ─────────────────────────────────────────────────────────────
 
-function ItemsStep({ wizard }: { wizard: WizardState }) {
+function ItemsStep({ wizard, update }: { wizard: WizardState; update: (p: Partial<WizardState>) => void }) {
   const cls = CLASSES.find(c => c.name === wizard.selectedClass)
   const bg  = BACKGROUNDS.find(b => b.name === wizard.selectedBackground)
   if (!cls || !bg) return null
 
+  const armorChoices  = CLASS_ARMOR_CHOICES[cls.name]
+  const weaponChoices = CLASS_WEAPON_CHOICES[cls.name]
+  const hasChoices = armorChoices || weaponChoices
+
   return (
     <>
       <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-        Here is everything you start with. Some entries may offer choices — these are made at the table with your DM.
+        {hasChoices
+          ? 'Make your starting choices below, then check what else you get from your class and background.'
+          : 'Here is everything you start with.'}
       </p>
 
+      {armorChoices && (
+        <div className="creator-detail">
+          <div className="creator-detail-section-title">Choose Your Armour</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+            {armorChoices.map(opt => {
+              const selected = wizard.selectedArmor === opt.label
+              const acLabel = opt.acType === 'light' ? 'Light' : opt.acType === 'medium' ? 'Medium' : 'Heavy'
+              return (
+                <button
+                  key={opt.label}
+                  className={`creator-card${selected ? ' creator-card--selected' : ''}`}
+                  style={{ textAlign: 'left', padding: '0.6rem 0.9rem' }}
+                  onClick={() => update({ selectedArmor: opt.label })}
+                >
+                  <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{opt.label}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    {acLabel} armour{opt.note ? ` — ${opt.note}` : ''}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {weaponChoices && (
+        <div className="creator-detail">
+          <div className="creator-detail-section-title">Choose Your Weapons</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+            {weaponChoices.map(opt => {
+              const selected = wizard.selectedWeapons === opt.label
+              return (
+                <button
+                  key={opt.label}
+                  className={`creator-card${selected ? ' creator-card--selected' : ''}`}
+                  style={{ textAlign: 'left', padding: '0.6rem 0.9rem' }}
+                  onClick={() => update({ selectedWeapons: opt.label })}
+                >
+                  <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{opt.label}</div>
+                  {opt.style && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{opt.style}</div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="creator-detail">
-        <div className="creator-detail-section-title">From {cls.name}</div>
-        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: '1.6', whiteSpace: 'pre-line' }}>
-          {cls.startingEquipment}
+        <div className="creator-detail-section-title">Also from {cls.name}</div>
+        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+          {CLASS_FIXED_ITEMS[cls.name] ?? cls.startingEquipment}
         </div>
       </div>
 
       <div className="creator-detail">
         <div className="creator-detail-section-title">From {bg.name} background</div>
-        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: '1.6', whiteSpace: 'pre-line' }}>
+        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
           {bg.startingEquipment}
         </div>
       </div>
@@ -1117,7 +1313,9 @@ function ReviewStep({ wizard }: { wizard: WizardState }) {
   const profBonus  = 2
   const hp         = cls.hitDie + mod(finalScores.con)
   const initiative = mod(finalScores.dex)
-  const ac         = calcAc(cls.acType, finalScores)
+  const reviewArmorChoice  = CLASS_ARMOR_CHOICES[cls.name]?.find(a => a.label === wizard.selectedArmor)
+  const reviewWeaponChoice = CLASS_WEAPON_CHOICES[cls.name]?.find(w => w.label === wizard.selectedWeapons)
+  const ac         = calcAc(reviewArmorChoice?.acType ?? cls.acType, finalScores)
 
   const allProficientSkills = [...new Set([...wizard.selectedSkills, ...(bg.skills as string[])])]
 
@@ -1197,6 +1395,16 @@ function ReviewStep({ wizard }: { wizard: WizardState }) {
 
       <div className="creator-review-block">
         <div className="creator-review-block-title">Starting Equipment</div>
+        {reviewArmorChoice && (
+          <div style={{ fontSize: '0.75rem', color: 'var(--accent)', lineHeight: '1.5', marginBottom: '0.25rem' }}>
+            <strong>Armour:</strong> {reviewArmorChoice.label}{reviewArmorChoice.note ? ` + ${reviewArmorChoice.note}` : ''}
+          </div>
+        )}
+        {reviewWeaponChoice && (
+          <div style={{ fontSize: '0.75rem', color: 'var(--accent)', lineHeight: '1.5', marginBottom: '0.25rem' }}>
+            <strong>Weapons:</strong> {reviewWeaponChoice.items}
+          </div>
+        )}
         <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
           <strong>Class:</strong> {cls.startingEquipment}
         </div>
