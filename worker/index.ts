@@ -174,8 +174,9 @@ async function appendRow(token: string, sheetId: string, char: RemoteCharacter):
 // ─── CORS / response helpers ──────────────────────────────────────────────────
 
 function corsHeaders(origin: string, allowed: string): Record<string, string> {
-  // Only echo the origin back if it matches; otherwise use the configured value.
-  const effectiveOrigin = origin === allowed ? origin : allowed
+  // Allow configured origin or any localhost port (for local dev).
+  const isLocalhost = /^https?:\/\/localhost(:\d+)?$/.test(origin)
+  const effectiveOrigin = (origin === allowed || isLocalhost) ? origin : allowed
   return {
     'Access-Control-Allow-Origin':  effectiveOrigin,
     'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
