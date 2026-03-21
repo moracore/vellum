@@ -1,87 +1,139 @@
 import { useState } from 'react'
 import { ArrowLeft, Check } from 'lucide-react'
 import { useCharacter } from '../context/CharacterContext'
-import { findSpell, type SpellData } from '../data/spells'
-import { CLASS_SPELL_LIST } from '../data/classSpellList'
-import { CLASS_PROGRESSION } from '../data/classProgression'
+import { db } from '../lib/database'
+import type { SpellRow } from '../lib/database'
 
-const LEVEL_LABELS = ['Cantrips', '1st Level', '2nd Level', '3rd Level', '4th Level', '5th Level']
+const LEVEL_LABELS = ['Cantrips', '1st Level', '2nd Level', '3rd Level', '4th Level', '5th Level',
+  '6th Level', '7th Level', '8th Level', '9th Level']
 
 interface Props {
   onClose: () => void
 }
 
 export default function SpellChooser({ onClose }: Props) {
-  const { sheet, updateSpells } = useCharacter()
+  const { character, updateSpells } = useCharacter()
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<Set<number>>(new Set())
 
-  if (!sheet) return null
+  if (!character) return null
 
-  const progression = CLASS_PROGRESSION[sheet.class]
-  if (!progression) return null
+  const classRow = db.classes.find(c => c.name.toLowerCase() === character.class.toLowerCase())
+  if (!classRow || !db.loaded) return null
 
-  const classSpells = CLASS_SPELL_LIST[sheet.class] ?? {}
-  const lvlIdx = sheet.level - 1
-  const maxSlotLevel = progression.maxSpellLevel[lvlIdx] ?? 0
-  const neededCantrips = progression.cantripsKnown[lvlIdx] ?? 0
-  const neededSpells = progression.spellsKnown[lvlIdx] ?? 0
+  const classId = classRow.class_id
+  const isPreparedCaster = classRow.prepared_level_divisor != null
+  const lvlRow = db.progression.find(r =>
+    r.class_id === classId && r.level === character.level && r.subclass_id === null
+  )
+  const neededCantrips = lvlRow?.cantrips_known ?? 0
+  const neededSpells = lvlRow?.spells_known ?? 0
 
-  const knownNames = new Set(sheet.spells.map(s => s.name.toLowerCase()))
-  const knownCantrips = sheet.spells.filter(s => s.level === 0).length
-  const knownSpells = sheet.spells.filter(s => s.level > 0).length
+  // Max usable spell slot level
+  const dbSlots = db.getSpellSlots(classId, character.level)
+  const slotCounts = dbSlots ? [
+    dbSlots.slot_level_1, dbSlots.slot_level_2, dbSlots.slot_level_3,
+    dbSlots.slot_level_4, dbSlots.slot_level_5, dbSlots.slot_level_6,
+    dbSlots.slot_level_7, dbSlots.slot_level_8, dbSlots.slot_level_9,
+  ] : []
+  let maxSlotLevel = 0
+  for (let i = slotCounts.length - 1; i >= 0; i--) {
+    if (slotCounts[i] > 0) { maxSlotLevel = i + 1; break }
+  }
+  if (neededCantrips > 0 || isPreparedCaster) maxSlotLevel = Math.max(maxSlotLevel, 0)
+
+  const allClassSpells = db.getClassSpells(classId)
+
+  // Build set of already-known spell IDs
+  const knownIds = new Set(character.spellsByLevel.flat())
+  const knownCantrips = character.spellsByLevel[0]?.length ?? 0
+  const knownLeveled = character.spellsByLevel.slice(1).reduce((sum, ids) => sum + ids.length, 0)
 
   const slotsCantrips = Math.max(0, neededCantrips - knownCantrips)
-  const slotsSpells = Math.max(0, neededSpells - knownSpells)
-  const totalSlots = slotsCantrips + slotsSpells
+  const slotsSpells = isPreparedCaster ? Infinity : Math.max(0, neededSpells - knownLeveled)
+  const totalSlots = isPreparedCaster ? Infinity : slotsCantrips + slotsSpells
 
   // Build available spell list grouped by level, excluding already known
-  const available: { level: number; spells: SpellData[] }[] = []
+  const available: { level: number; spells: SpellRow[] }[] = []
   for (let lvl = 0; lvl <= maxSlotLevel; lvl++) {
-    const names = classSpells[lvl] ?? []
-    const spells = names
-      .filter(n => !knownNames.has(n.toLowerCase()))
-      .map(n => findSpell(n))
-      .filter((s): s is SpellData => s != null)
+    const spells = allClassSpells
+      .filter(s => s.level === lvl && !knownIds.has(s.spell_id))
+      .sort((a, b) => a.name.localeCompare(b.name))
     if (spells.length > 0) available.push({ level: lvl, spells })
   }
 
-  // Count how many of selected are cantrips vs levelled
-  const selectedCantrips = [...selected].filter(n => {
-    const s = findSpell(n)
-    return s?.level === 0
-  }).length
-  const selectedSpells = selected.size - selectedCantrips
-
-  const canSelect = (spell: SpellData): boolean => {
-    if (selected.has(spell.name)) return true
-    if (spell.level === 0) return selectedCantrips < slotsCantrips
-    return selectedSpells < slotsSpells
+  // For prepared casters, show already-known spells so they can be removed
+  const removable: { level: number; spells: { id: number; name: string; level: number }[] }[] = []
+  if (isPreparedCaster) {
+    const byLevel: Record<number, { id: number; name: string; level: number }[]> = {}
+    for (let lvl = 0; lvl <= 9; lvl++) {
+      const ids = character.spellsByLevel[lvl] ?? []
+      for (const id of ids) {
+        const spell = db.spells.get(id)
+        if (!spell) continue
+        if (!byLevel[lvl]) byLevel[lvl] = []
+        byLevel[lvl].push({ id, name: spell.name, level: lvl })
+      }
+    }
+    for (const lvl of Object.keys(byLevel).map(Number).sort((a, b) => a - b)) {
+      removable.push({ level: lvl, spells: byLevel[lvl].sort((a, b) => a.name.localeCompare(b.name)) })
+    }
   }
 
-  const toggleSpell = (name: string) => {
-    const s = findSpell(name)
-    if (!s) return
+  const [toRemove, setToRemove] = useState<Set<number>>(new Set())
+
+  const selectedCantrips = [...selected].filter(id => {
+    const s = allClassSpells.find(sp => sp.spell_id === id)
+    return s?.level === 0
+  }).length
+  const selectedLeveled = selected.size - selectedCantrips
+
+  const canSelect = (spell: SpellRow): boolean => {
+    if (selected.has(spell.spell_id)) return true
+    if (isPreparedCaster) return true
+    if (spell.level === 0) return selectedCantrips < slotsCantrips
+    return selectedLeveled < slotsSpells
+  }
+
+  const toggleSpell = (spell: SpellRow) => {
     const next = new Set(selected)
-    if (next.has(name)) {
-      next.delete(name)
-    } else if (canSelect(s)) {
-      next.add(name)
+    if (next.has(spell.spell_id)) {
+      next.delete(spell.spell_id)
+    } else if (canSelect(spell)) {
+      next.add(spell.spell_id)
     }
     setSelected(next)
   }
 
+  const toggleRemove = (spellId: number) => {
+    const next = new Set(toRemove)
+    if (next.has(spellId)) next.delete(spellId)
+    else next.add(spellId)
+    setToRemove(next)
+  }
+
   const confirmLearn = () => {
-    const newSpells = [...selected]
-      .map(n => findSpell(n))
-      .filter((s): s is SpellData => s != null)
-      .map(s => ({ ...s, prepared: false }))
-    updateSpells([...sheet.spells, ...newSpells])
+    // Build new spellsByLevel: keep existing minus removed, add selected
+    const newByLevel = character.spellsByLevel.map(ids => ids.filter(id => !toRemove.has(id)))
+
+    // Add selected spells to their correct levels
+    for (const spellId of selected) {
+      const spell = allClassSpells.find(s => s.spell_id === spellId)
+      if (!spell) continue
+      if (!newByLevel[spell.level]) newByLevel[spell.level] = []
+      newByLevel[spell.level].push(spellId)
+    }
+
+    // Update prepared spells: remove any that were removed from the list
+    const newPrepared = character.preparedSpells.filter(id => !toRemove.has(id))
+
+    updateSpells(newByLevel, newPrepared)
     onClose()
   }
 
   const remainingCantrips = slotsCantrips - selectedCantrips
-  const remainingSpells = slotsSpells - selectedSpells
+  const remainingSpells = isPreparedCaster ? null : slotsSpells - selectedLeveled
+  const hasChanges = selected.size > 0 || toRemove.size > 0
 
   return (
     <div className="chooser-page">
@@ -99,9 +151,15 @@ export default function SpellChooser({ onClose }: Props) {
               {remainingCantrips > 0 ? `${remainingCantrips} cantrip${remainingCantrips !== 1 ? 's' : ''} left` : 'Cantrips ✓'}
             </span>
           )}
-          {slotsSpells > 0 && (
-            <span className={remainingSpells === 0 ? 'chooser-count done' : 'chooser-count'}>
-              {remainingSpells > 0 ? `${remainingSpells} spell${remainingSpells !== 1 ? 's' : ''} left` : 'Spells ✓'}
+          {remainingSpells !== null && remainingSpells > 0 && (
+            <span className="chooser-count">
+              {remainingSpells} spell{remainingSpells !== 1 ? 's' : ''} left
+            </span>
+          )}
+          {isPreparedCaster && (
+            <span className="chooser-count">
+              {selected.size > 0 ? `+${selected.size}` : ''}{toRemove.size > 0 ? ` −${toRemove.size}` : ''}
+              {selected.size === 0 && toRemove.size === 0 ? 'Add or remove spells' : ''}
             </span>
           )}
         </div>
@@ -116,12 +174,12 @@ export default function SpellChooser({ onClose }: Props) {
             <div key={level} className="chooser-group">
               <div className="chooser-group-heading">{LEVEL_LABELS[level]}</div>
               {spells.map(spell => {
-                const isSelected = selected.has(spell.name)
+                const isSelected = selected.has(spell.spell_id)
                 const isExpanded = expanded === spell.name
                 const selectable = canSelect(spell)
                 return (
                   <div
-                    key={spell.name}
+                    key={spell.spell_id}
                     className={`chooser-card ${isSelected ? 'selected' : ''} ${!selectable && !isSelected ? 'dim' : ''}`}
                   >
                     <div
@@ -131,7 +189,7 @@ export default function SpellChooser({ onClose }: Props) {
                       <div className="chooser-card-left">
                         <button
                           className={`chooser-pick-btn ${isSelected ? 'picked' : ''}`}
-                          onClick={e => { e.stopPropagation(); toggleSpell(spell.name) }}
+                          onClick={e => { e.stopPropagation(); toggleSpell(spell) }}
                           disabled={!selectable && !isSelected}
                         >
                           {isSelected ? <Check size={12} /> : '+'}
@@ -146,10 +204,10 @@ export default function SpellChooser({ onClose }: Props) {
                     {isExpanded && (
                       <div className="chooser-detail">
                         <div className="chooser-meta">
-                          {spell.castingTime && <span><b>Cast</b> {spell.castingTime}</span>}
-                          {spell.range       && <span><b>Range</b> {spell.range}</span>}
-                          {spell.duration    && <span><b>Dur</b> {spell.duration}</span>}
-                          {spell.components  && <span><b>Comp</b> {spell.components}</span>}
+                          {spell.casting_time && <span><b>Cast</b> {spell.casting_time}</span>}
+                          {spell.range        && <span><b>Range</b> {spell.range}</span>}
+                          {spell.duration     && <span><b>Dur</b> {spell.duration}</span>}
+                          {spell.components   && <span><b>Comp</b> {spell.components}</span>}
                         </div>
                         <p className="chooser-desc">{spell.description}</p>
                       </div>
@@ -163,14 +221,14 @@ export default function SpellChooser({ onClose }: Props) {
       </div>
 
       {/* Confirm bar */}
-      {selected.size > 0 && (
+      {hasChanges && (
         <div className="chooser-confirm-bar">
           <span className="chooser-confirm-info">
             {selected.size} spell{selected.size !== 1 ? 's' : ''} selected
-            {totalSlots > 0 && selected.size < totalSlots ? ` (${totalSlots - selected.size} more available)` : ''}
+            {totalSlots !== Infinity && totalSlots > 0 && selected.size < totalSlots ? ` (${totalSlots - selected.size} more available)` : ''}
           </span>
           <button className="chooser-confirm-btn" onClick={confirmLearn}>
-            Learn Selected
+            Confirm
           </button>
         </div>
       )}

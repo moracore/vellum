@@ -3,12 +3,7 @@ import type { ConflictState } from '../context/CharacterContext'
 
 interface Props {
   conflict: ConflictState
-  localMarkdown: string
   onResolve: (choice: 'local' | 'server') => Promise<void>
-}
-
-function firstName(markdown: string): string {
-  return markdown.split('\n').find(l => l.startsWith('# '))?.slice(2).trim() ?? 'Unknown'
 }
 
 function fmt(iso: string): string {
@@ -18,7 +13,7 @@ function fmt(iso: string): string {
   })
 }
 
-export default function ConflictModal({ conflict, localMarkdown, onResolve }: Props) {
+export default function ConflictModal({ conflict, onResolve }: Props) {
   const [busy, setBusy] = useState(false)
 
   const handle = async (choice: 'local' | 'server') => {
@@ -27,14 +22,12 @@ export default function ConflictModal({ conflict, localMarkdown, onResolve }: Pr
     setBusy(false)
   }
 
-  const charName = firstName(localMarkdown)
-
   return (
     <div className="conflict-overlay">
       <div className="conflict-card">
         <h2 className="conflict-title">Sync Conflict</h2>
         <p className="conflict-desc">
-          <strong>{charName}</strong> was edited on another device while you had unsynced local changes.
+          <strong>{conflict.serverData.name}</strong> was edited on another device while you had unsynced local changes.
           Choose which version to keep:
         </p>
 

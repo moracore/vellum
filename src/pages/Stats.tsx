@@ -1,6 +1,7 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { Settings as SettingsIcon } from 'lucide-react'
 import { useCharacter } from '../context/CharacterContext'
+import { db } from '../lib/database'
 import type { Ability } from '../types'
 
 const DM_SEQ: Ability[] = ['wis', 'wis', 'wis', 'cha', 'cha', 'int']
@@ -15,6 +16,11 @@ const ABILITIES: { key: Ability; short: string }[] = [
   { key: 'cha', short: 'CHA' },
 ]
 
+// Ability ID mapping: 1=STR, 2=DEX, 3=CON, 4=INT, 5=WIS, 6=CHA
+const ABILITY_KEY_TO_ID: Record<Ability, number> = {
+  str: 1, dex: 2, con: 3, int: 4, wis: 5, cha: 6,
+}
+
 const SAVES: { key: Ability; label: string }[] = [
   { key: 'str', label: 'Strength' },
   { key: 'dex', label: 'Dexterity' },
@@ -24,26 +30,29 @@ const SAVES: { key: Ability; label: string }[] = [
   { key: 'cha', label: 'Charisma' },
 ]
 
-const SKILLS: { key: string; label: string; ability: Ability }[] = [
-  { key: 'acrobatics', label: 'Acrobatics', ability: 'dex' },
-  { key: 'animalHandling', label: 'Animal Handling', ability: 'wis' },
-  { key: 'arcana', label: 'Arcana', ability: 'int' },
-  { key: 'athletics', label: 'Athletics', ability: 'str' },
-  { key: 'deception', label: 'Deception', ability: 'cha' },
-  { key: 'history', label: 'History', ability: 'int' },
-  { key: 'insight', label: 'Insight', ability: 'wis' },
-  { key: 'intimidation', label: 'Intimidation', ability: 'cha' },
-  { key: 'investigation', label: 'Investigation', ability: 'int' },
-  { key: 'medicine', label: 'Medicine', ability: 'wis' },
-  { key: 'nature', label: 'Nature', ability: 'int' },
-  { key: 'perception', label: 'Perception', ability: 'wis' },
-  { key: 'performance', label: 'Performance', ability: 'cha' },
-  { key: 'persuasion', label: 'Persuasion', ability: 'cha' },
-  { key: 'religion', label: 'Religion', ability: 'int' },
-  { key: 'sleightOfHand', label: 'Sleight of Hand', ability: 'dex' },
-  { key: 'stealth', label: 'Stealth', ability: 'dex' },
-  { key: 'survival', label: 'Survival', ability: 'wis' },
+const SKILLS_DEF: { name: string; label: string; ability: Ability }[] = [
+  { name: 'Acrobatics', label: 'Acrobatics', ability: 'dex' },
+  { name: 'Animal Handling', label: 'Animal Handling', ability: 'wis' },
+  { name: 'Arcana', label: 'Arcana', ability: 'int' },
+  { name: 'Athletics', label: 'Athletics', ability: 'str' },
+  { name: 'Deception', label: 'Deception', ability: 'cha' },
+  { name: 'History', label: 'History', ability: 'int' },
+  { name: 'Insight', label: 'Insight', ability: 'wis' },
+  { name: 'Intimidation', label: 'Intimidation', ability: 'cha' },
+  { name: 'Investigation', label: 'Investigation', ability: 'int' },
+  { name: 'Medicine', label: 'Medicine', ability: 'wis' },
+  { name: 'Nature', label: 'Nature', ability: 'int' },
+  { name: 'Perception', label: 'Perception', ability: 'wis' },
+  { name: 'Performance', label: 'Performance', ability: 'cha' },
+  { name: 'Persuasion', label: 'Persuasion', ability: 'cha' },
+  { name: 'Religion', label: 'Religion', ability: 'int' },
+  { name: 'Sleight of Hand', label: 'Sleight of Hand', ability: 'dex' },
+  { name: 'Stealth', label: 'Stealth', ability: 'dex' },
+  { name: 'Survival', label: 'Survival', ability: 'wis' },
 ]
+
+const SKILLS_LEFT = SKILLS_DEF.slice(0, 9)
+const SKILLS_RIGHT = SKILLS_DEF.slice(9)
 
 function mod(score: number) { return Math.floor((score - 10) / 2) }
 function fmt(n: number) { return n >= 0 ? `+${n}` : `${n}` }
@@ -54,7 +63,7 @@ interface Props {
 }
 
 export default function Stats({ onOpenSettings, onDying }: Props) {
-  const { sheet, state, updateHp, updateDescription, longRest, setDmMode, triggerLevelUp } = useCharacter()
+  const { character, updateHp, longRest, setDmMode, triggerLevelUp } = useCharacter()
   const [hpEdit, setHpEdit] = useState<'cur' | 'tmp' | null>(null)
   const [hpInput, setHpInput] = useState('')
   const [dmPos, setDmPos] = useState(0)
@@ -63,6 +72,17 @@ export default function Stats({ onOpenSettings, onDying }: Props) {
   const [restPos, setRestPos] = useState(0)
   const [showZeroModal, setShowZeroModal] = useState(false)
   const [restToast, setRestToast] = useState(false)
+
+  // Build skill ID→name lookup from DB
+  const skillIdToName = useMemo(() => {
+    if (!db.loaded) return new Map<number, string>()
+    return new Map(db.skills.map(s => [s.skill_id, s.name]))
+  }, [])
+
+  const skillNameToId = useMemo(() => {
+    if (!db.loaded) return new Map<string, number>()
+    return new Map(db.skills.map(s => [s.name, s.skill_id]))
+  }, [])
 
   const advanceDm = (key: Ability) => {
     if (DM_SEQ[dmPos] === key) {
@@ -101,32 +121,57 @@ export default function Stats({ onOpenSettings, onDying }: Props) {
         lvlTapTimer.current = setTimeout(() => { lvlTapCount.current = 0 }, 3000)
       }
     } else if (REST_SEQ[restPos] === 'str') {
-      setRestPos(0) // wrong key, reset rest
+      setRestPos(0)
     }
   }
 
-  if (!sheet || !state) return null
+  if (!character) return null
 
-  const { abilityScores: ab, savingThrows: saves, skills, proficiencyBonus: prof } = sheet
+  const { abilityScores: ab, proficiencyBonus: prof } = character
+  const saveSet = new Set(character.savingThrows) // set of ability IDs with proficiency
+  const skillSet = new Set(character.skills)       // set of skill IDs with proficiency
 
-  const skillVal = (key: string, ability: Ability) => {
-    const s = skills[key as keyof typeof skills]
+  const skillVal = (name: string, ability: Ability) => {
+    const sid = skillNameToId.get(name)
     const base = mod(ab[ability])
-    const profPart = s.expertise ? prof * 2 : s.proficient ? prof : 0
-    return base + profPart + (s.bonus ?? 0)
+    const proficient = sid !== undefined && skillSet.has(sid)
+    const detail = sid !== undefined ? character.skillDetails[String(sid)] : undefined
+    const expertise = detail === 'expertise'
+    const bonusStr = detail && detail !== 'expertise' ? detail.replace('+', '') : undefined
+    const bonus = bonusStr ? parseInt(bonusStr) || 0 : 0
+    const profPart = expertise ? prof * 2 : proficient ? prof : 0
+    return base + profPart + bonus
   }
 
-  const saveVal = (a: Ability) => mod(ab[a]) + (saves[a] ? prof : 0)
+  const isSkillProficient = (name: string) => {
+    const sid = skillNameToId.get(name)
+    return sid !== undefined && skillSet.has(sid)
+  }
+
+  const isSkillExpertise = (name: string) => {
+    const sid = skillNameToId.get(name)
+    if (sid === undefined) return false
+    return character.skillDetails[String(sid)] === 'expertise'
+  }
+
+  const hasSkillBonus = (name: string) => {
+    const sid = skillNameToId.get(name)
+    if (sid === undefined) return false
+    const d = character.skillDetails[String(sid)]
+    return d !== undefined && d !== 'expertise'
+  }
+
+  const saveVal = (a: Ability) => mod(ab[a]) + (saveSet.has(ABILITY_KEY_TO_ID[a]) ? prof : 0)
 
   const applyHp = () => {
     const v = parseInt(hpInput)
     if (!isNaN(v)) {
       if (hpEdit === 'cur') {
-        const clamped = Math.max(0, Math.min(v, sheet.maxHp))
-        updateHp(clamped, state.tempHp)
+        const clamped = Math.max(0, Math.min(v, character.maxHp))
+        updateHp(clamped, character.tempHp)
         if (clamped === 0) setShowZeroModal(true)
       } else {
-        updateHp(state.currentHp, Math.max(0, v))
+        updateHp(character.currentHp, Math.max(0, v))
       }
     }
     setHpEdit(null)
@@ -138,152 +183,154 @@ export default function Stats({ onOpenSettings, onDying }: Props) {
     if (e.key === 'Escape') { setHpEdit(null); setHpInput('') }
   }
 
-  const hpPct = Math.max(0, Math.min(100, (state.currentHp / sheet.maxHp) * 100))
+  const hpPct = Math.max(0, Math.min(100, (character.currentHp / character.maxHp) * 100))
 
-  // Low HP tint: 1hp=stronger, 2hp=medium, 3hp=subtle
-  const lowHpOpacity = state.currentHp === 1 ? 0.12
-    : state.currentHp === 2 ? 0.07
-      : state.currentHp === 3 ? 0.04
+  const lowHpOpacity = character.currentHp === 1 ? 0.12
+    : character.currentHp === 2 ? 0.07
+      : character.currentHp === 3 ? 0.04
         : 0
   const lowHpStyle = lowHpOpacity > 0
     ? { backgroundImage: `linear-gradient(rgba(200,0,0,${lowHpOpacity}), rgba(200,0,0,${lowHpOpacity}))` }
     : undefined
 
+  const hitDieMatch = character.hitDice.match(/\d*d(\d+)/)
+  const hitDieSize = hitDieMatch ? hitDieMatch[1] : '?'
+
+  const renderSkillRow = ({ name, label, ability }: { name: string; label: string; ability: Ability }) => {
+    const proficient = isSkillProficient(name)
+    const expertise = isSkillExpertise(name)
+    const bonus = hasSkillBonus(name)
+    return (
+      <div className="sheet-row" key={`skill-${name}`}>
+        <span className={`sheet-dot ${expertise ? 'expertise' : proficient ? 'filled' : bonus ? 'bonus' : ''}`} />
+        <span className="sheet-row-val">{fmt(skillVal(name, ability))}</span>
+        <span className="sheet-row-lbl">{label}</span>
+      </div>
+    )
+  }
+
   return (
     <div className="sheet" style={lowHpStyle}>
-      <div className="sheet-top-section">
-        {/* ── Top header ── */}
-        <div className="sheet-header">
+
+      {/* ── Header ── */}
+      <div className="sheet-header">
+        <div className="sheet-header-top">
           <div className="sheet-header-names">
-            <div className="sheet-header-charname">{sheet.characterName}</div>
-            <div className="sheet-header-playername">{sheet.playerName}</div>
+            <span className="sheet-header-charname">{character.name}</span>
+            <span className="sheet-header-dot"> · </span>
+            <span className="sheet-header-playername">{character.player}</span>
           </div>
-          <div className="sheet-header-fields">
-            <div className="sheet-hfield">
-              <span className="sheet-hfield-val">{sheet.level || '—'}</span>
-              <span className="sheet-hfield-lbl">Level</span>
-            </div>
-            <div className="sheet-hfield">
-              <span className="sheet-hfield-val">{[sheet.class, sheet.subclass].filter(Boolean).join(' · ') || '—'}</span>
-              <span className="sheet-hfield-lbl">Class</span>
-            </div>
-            <div className="sheet-hfield" onClick={() => advanceRest('race')} style={{ cursor: 'default' }}>
-              <span className="sheet-hfield-val">{sheet.race || '—'}</span>
-              <span className="sheet-hfield-lbl">Race</span>
-            </div>
-          </div>
+          <button className="sheet-header-settings" onClick={onOpenSettings} title="Settings">
+            <SettingsIcon size={18} />
+          </button>
         </div>
-
-        {/* ── Three columns ── */}
-        <div className="sheet-columns">
-
-          {/* Col 1 — Ability scores */}
-          <div className="sheet-col sheet-col--abilities">
-            <div className="sheet-col-label">Abilities</div>
-            <div className="sheet-abilities-grid">
-              {ABILITIES.map(({ key, short }) => (
-                <div className="sheet-ab" key={key} onClick={() => handleAbilityTap(key)}>
-                  <span className="sheet-ab-short">{short}</span>
-                  <span className="sheet-ab-mod">{fmt(mod(ab[key]))}</span>
-                  <span className="sheet-ab-score">{ab[key]}</span>
-                </div>
-              ))}
-            </div>
+        <div className="sheet-header-fields">
+          <div className="sheet-hfield">
+            <span className="sheet-hfield-val">{character.level || '—'}</span>
+            <span className="sheet-hfield-lbl">Level</span>
           </div>
-
-          {/* Col 2 — Saving throws + Skills */}
-          <div className="sheet-col sheet-col--saves-skills">
-            <div className="sheet-col-label">Saving Throws</div>
-            {SAVES.map(({ key, label }) => (
-              <div className="sheet-row" key={`save-${key}`}>
-                <span className={`sheet-dot ${saves[key] ? 'filled' : ''}`} />
-                <span className="sheet-row-val">{fmt(saveVal(key))}</span>
-                <span className="sheet-row-lbl">{label}</span>
-              </div>
-            ))}
-
-            <div className="sheet-divider" />
-            <div className="sheet-col-label">Skills</div>
-
-            {SKILLS.map(({ key, label, ability }) => {
-              const s = skills[key as keyof typeof skills]
-              return (
-                <div className="sheet-row" key={`skill-${key}`}>
-                  <span className={`sheet-dot ${s.expertise ? 'expertise' : s.proficient ? 'filled' : s.bonus ? 'bonus' : ''}`} />
-                  <span className="sheet-row-val">{fmt(skillVal(key, ability))}</span>
-                  <span className="sheet-row-lbl">
-                    {label} <span className="sheet-row-lbl-ab">({ability.charAt(0).toUpperCase() + ability.slice(1)})</span>
-                  </span>
-                </div>
-              )
-            })}
+          <div className="sheet-hfield">
+            <span className="sheet-hfield-val">{[character.class, character.subclass].filter(Boolean).join(' · ') || '—'}</span>
+            <span className="sheet-hfield-lbl">Class</span>
           </div>
-
-          {/* Col 3 — HP + Combat + Languages + Description */}
-          <div className="sheet-col sheet-col--combat">
-
-            <div className="sheet-col-label">Hit Points</div>
-            <div
-              className={`sheet-hp-edit ${hpEdit === 'cur' ? 'active' : ''}`}
-              onClick={() => { setHpEdit('cur'); setHpInput(String(state.currentHp)) }}
-            >
-              {hpEdit === 'cur'
-                ? <input className="sheet-hp-input" type="number" value={hpInput} autoFocus
-                  onChange={e => setHpInput(e.target.value)} onBlur={applyHp} onKeyDown={onKey} />
-                : <span className="sheet-hp-cur">{state.currentHp}</span>}
-              <span className="sheet-hp-max">/ {sheet.maxHp}</span>
-            </div>
-            <div className="sheet-hp-track">
-              <div className="sheet-hp-fill" style={{ width: `${hpPct}%` }} />
-            </div>
-            {state.tempHp > 0 && (
-              <div
-                className={`sheet-stat-row ${hpEdit === 'tmp' ? 'active' : ''}`}
-                onClick={() => { setHpEdit('tmp'); setHpInput(String(state.tempHp)) }}
-                style={{ cursor: 'pointer' }}
-              >
-                <span className="sheet-stat-key">Temp HP</span>
-                {hpEdit === 'tmp'
-                  ? <input className="sheet-inline-input" type="number" value={hpInput} autoFocus
-                    onChange={e => setHpInput(e.target.value)} onBlur={applyHp} onKeyDown={onKey} />
-                  : <span className="sheet-stat-val">{state.tempHp}</span>}
-              </div>
-            )}
-
-            <div className="sheet-divider" />
-
-            <div className="sheet-stat-row"><span className="sheet-stat-key">AC</span><span className="sheet-stat-val">{sheet.ac}</span></div>
-            <div className="sheet-stat-row"><span className="sheet-stat-key">Initiative</span><span className="sheet-stat-val">{fmt(sheet.initiative)}</span></div>
-            <div className="sheet-stat-row"><span className="sheet-stat-key">Speed</span><span className="sheet-stat-val">{sheet.speed} ft</span></div>
-            <div className="sheet-stat-row"><span className="sheet-stat-key">Hit Dice</span><span className="sheet-stat-val">{sheet.hitDice}</span></div>
-            <div className="sheet-stat-row"><span className="sheet-stat-key">Prof. Bonus</span><span className="sheet-stat-val">{fmt(prof)}</span></div>
-            <div className="sheet-stat-row" style={{ borderBottom: 'none', paddingBottom: 6 }}><span className="sheet-stat-key">Passive Perc.</span><span className="sheet-stat-val">{10 + skillVal('perception', 'wis')}</span></div>
-
-            {/* Character description — fills remaining space */}
-            <textarea
-              className="sheet-desc-textarea"
-              style={{ marginBottom: 6 }}
-              value={state.description}
-              onChange={e => updateDescription(e.target.value)}
-              placeholder="Character description..."
-            />
-
-            <div className="sheet-lang-box">
-              <span className="sheet-lang-lbl">Languages</span>
-              <span className="sheet-lang-value">
-                {sheet.languages.length > 0 ? sheet.languages.join(', ') : '—'}
-              </span>
-            </div>
-
+          <div className="sheet-hfield" onClick={() => advanceRest('race')} style={{ cursor: 'default' }}>
+            <span className="sheet-hfield-val">{character.race || '—'}</span>
+            <span className="sheet-hfield-lbl">Race</span>
           </div>
         </div>
       </div>
 
-      <div className="sheet-bottom-section">
-        <button className="stats-settings-btn" onClick={onOpenSettings}>
-          <SettingsIcon size={18} />
-          Settings
-        </button>
+      {/* ── Combat strip ── */}
+      <div className="combat-strip">
+        <div className="combat-hp">
+          <div
+            className={`combat-hp-edit ${hpEdit === 'cur' ? 'active' : ''}`}
+            onClick={() => { setHpEdit('cur'); setHpInput(String(character.currentHp)) }}
+          >
+            {hpEdit === 'cur'
+              ? <input className="combat-hp-input" type="number" value={hpInput} autoFocus
+                  onChange={e => setHpInput(e.target.value)} onBlur={applyHp} onKeyDown={onKey} />
+              : <span className="combat-hp-cur">{character.currentHp}</span>}
+            <span className="combat-hp-max">/ {character.maxHp}</span>
+            <span className="combat-hp-label">HP</span>
+          </div>
+          <div className="combat-hp-track">
+            <div className="combat-hp-fill" style={{ width: `${hpPct}%` }} />
+          </div>
+          {character.tempHp > 0 && (
+            <div
+              className="combat-tmp-hp"
+              onClick={() => { setHpEdit('tmp'); setHpInput(String(character.tempHp)) }}
+            >
+              {hpEdit === 'tmp'
+                ? <input className="combat-hp-input combat-hp-input--sm" type="number" value={hpInput} autoFocus
+                    onChange={e => setHpInput(e.target.value)} onBlur={applyHp} onKeyDown={onKey} />
+                : <span>+{character.tempHp} tmp</span>}
+            </div>
+          )}
+        </div>
+        <div className="combat-stat">
+          <span className="combat-stat-val">{character.ac}</span>
+          <span className="combat-stat-lbl">AC</span>
+        </div>
+        <div className="combat-stat">
+          <span className="combat-stat-val">{fmt(character.initiative)}</span>
+          <span className="combat-stat-lbl">Init</span>
+        </div>
+      </div>
+
+      {/* ── Ability squares (left) + Saves (right) ── */}
+      <div className="saves-abilities-row">
+        <div className="ability-grid-block">
+          {ABILITIES.map(({ key, short }) => (
+            <div className="ability-square" key={key} onClick={() => handleAbilityTap(key)}>
+              <span className="ability-square-label">{short}</span>
+              <span className="ability-square-mod">{fmt(mod(ab[key]))}</span>
+              <span className="ability-square-score">{ab[key]}</span>
+            </div>
+          ))}
+        </div>
+        <div className="saves-col">
+          <div className="sheet-col-label">Saving Throws</div>
+          {SAVES.map(({ key, label }) => (
+            <div className="sheet-row" key={`save-${key}`}>
+              <span className={`sheet-dot ${saveSet.has(ABILITY_KEY_TO_ID[key]) ? 'filled' : ''}`} />
+              <span className="sheet-row-val">{fmt(saveVal(key))}</span>
+              <span className="sheet-row-lbl">{label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Skills 2-column ── */}
+      <div className="skills-grid">
+        <div className="skills-col">
+          <div className="sheet-col-label">Skills</div>
+          {SKILLS_LEFT.map(renderSkillRow)}
+        </div>
+        <div className="skills-col">
+          <div className="sheet-col-label">&nbsp;</div>
+          {SKILLS_RIGHT.map(renderSkillRow)}
+        </div>
+      </div>
+
+      {/* ── Footnote strip ── */}
+      <div className="sheet-footnote">
+        <span>Speed {character.speed}ft</span>
+        <span className="sheet-footnote-sep">·</span>
+        <span>Prof {fmt(prof)}</span>
+        <span className="sheet-footnote-sep">·</span>
+        <span>Hit Dice {character.hitDiceCurrent}/{character.level}d{hitDieSize}</span>
+        <span className="sheet-footnote-sep">·</span>
+        <span>Perc {10 + skillVal('Perception', 'wis')}</span>
+        {character.conditions.length > 0 && (
+          <>
+            <span className="sheet-footnote-sep">·</span>
+            {character.conditions.map(c => (
+              <span key={c} className="sheet-footnote-condition">{c}</span>
+            ))}
+          </>
+        )}
       </div>
 
       {/* ── 0 HP confirmation modal ── */}

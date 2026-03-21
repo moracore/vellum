@@ -1,28 +1,41 @@
 import { getAllCharacterRecords } from '../../db'
 
-// The static .md files in this directory are kept for DM reference / initial
-// Sheet seeding only.  At runtime the app reads exclusively from IndexedDB,
-// which is populated by the startup pull from the Cloudflare Worker.
+function norm(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, '')
+}
 
 /**
- * Search IndexedDB for a character matching the given player name, character
- * name, or alias (all case-insensitive, whitespace-collapsed).
- *
- * Returns { id, markdown } or null if no match is found.
+ * Sign-in: find a character by the triple (characterName, playerName, passkey).
+ * All comparisons are case-insensitive and whitespace-collapsed.
  */
-export async function findCharacter(query: string): Promise<{ id: string; markdown: string } | null> {
-  const q       = query.trim().toLowerCase().replace(/\s+/g, '')
+export async function findCharacter(
+  characterName: string,
+  playerName: string,
+  passkey: string,
+): Promise<{ id: string } | null> {
+  const qChar = norm(characterName)
+  const qPlayer = norm(playerName)
+  const qKey = norm(passkey)
+
   const records = await getAllCharacterRecords()
 
-  const found = records.find(({ markdown }) => {
-    const lines      = markdown.split('\n')
-    const charName   = lines.find(l => l.startsWith('# '))?.slice(2).trim().toLowerCase().replace(/\s+/g, '') ?? ''
-    const playerName = lines.find(l => l.startsWith('Player:'))?.slice(7).trim().toLowerCase().replace(/\s+/g, '') ?? ''
-    const aliases    = (lines.find(l => l.startsWith('Aliases:'))?.slice(8).trim() ?? '')
-      .split(',').map(a => a.trim().toLowerCase().replace(/\s+/g, '')).filter(Boolean)
-
-    return charName === q || playerName === q || aliases.includes(q)
+  const found = records.find(({ data }) => {
+    return norm(data.name) === qChar
+      && norm(data.player) === qPlayer
+      && norm(data.passkey) === qKey
   })
 
-  return found ? { id: found.id, markdown: found.markdown } : null
+  return found ? { id: found.id } : null
+}
+
+/**
+ * Check if a (characterName, playerName, passkey) triple is already taken.
+ */
+export async function isPasskeyTaken(
+  characterName: string,
+  playerName: string,
+  passkey: string,
+): Promise<boolean> {
+  const result = await findCharacter(characterName, playerName, passkey)
+  return result !== null
 }

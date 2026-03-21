@@ -1,6 +1,6 @@
-import { Sword, Shield, Sparkles, ScrollText } from 'lucide-react'
+import { Sword, Package, Shield, Sparkles, ScrollText } from 'lucide-react'
 
-type Tab = 'stats' | 'traits' | 'spells' | 'notes'
+type Tab = 'stats' | 'inventory' | 'traits' | 'spells' | 'notes'
 
 interface Props {
   active?: Tab
@@ -9,14 +9,15 @@ interface Props {
 }
 
 const TABS: { id: Tab; label: string; Icon: React.FC<{ size?: number }> }[] = [
-  { id: 'stats',  label: 'Character', Icon: Sword },
-  { id: 'traits', label: 'Traits',    Icon: Shield },
-  { id: 'spells', label: 'Spells',    Icon: Sparkles },
-  { id: 'notes',  label: 'Notes',     Icon: ScrollText },
+  { id: 'stats',     label: 'Character', Icon: Sword },
+  { id: 'inventory', label: 'Inventory', Icon: Package },
+  { id: 'traits',    label: 'Traits',    Icon: Shield },
+  { id: 'spells',    label: 'Spells',    Icon: Sparkles },
+  { id: 'notes',     label: 'Notes',     Icon: ScrollText },
 ]
 
 export default function BottomNav({ active, activeTabs, onChange }: Props) {
-  const isActive = (id: Tab) => activeTabs ? activeTabs.includes(id) : active === id;
+  const isActive = (id: Tab) => activeTabs ? activeTabs.includes(id) : active === id
 
   return (
     <nav className="bottom-nav">

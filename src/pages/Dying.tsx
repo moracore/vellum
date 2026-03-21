@@ -13,16 +13,16 @@ const FAIL_BG = [
 ]
 
 export default function Dying({ onStabilized }: Props) {
-  const { sheet, state, recordDeathSave, stabilize } = useCharacter()
+  const { character, recordDeathSave, stabilize } = useCharacter()
   const [stabilizeModal, setStabilizeModal] = useState(false)
 
   useEffect(() => {
-    if (state && state.deathSaveSuccesses >= 3) setStabilizeModal(true)
-  }, [state?.deathSaveSuccesses]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (character && character.deathSaves[0] >= 3) setStabilizeModal(true)
+  }, [character?.deathSaves[0]]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!state || !sheet) return null
+  if (!character) return null
 
-  const failures = state.deathSaveFailures
+  const failures = character.deathSaves[1]
   const isDead = failures >= 3
 
   const bgOverlay = FAIL_BG[Math.min(failures, 2)]
@@ -34,21 +34,19 @@ export default function Dying({ onStabilized }: Props) {
 
   return (
     <div className="dying-page" style={{ '--dying-red': bgOverlay } as React.CSSProperties}>
-      {/* Red tint overlay — intensifies with failures */}
       <div className="dying-bg-tint" />
 
       <div className="dying-content">
 
-        {/* Explanation */}
         <div className="dying-explainer">
           <div className="dying-explainer-title">
             {isDead ? (
               <>
-                <HeartCrack size={20} /> {`${sheet.characterName} Has Died`}
+                <HeartCrack size={20} /> {`${character.name} Has Died`}
               </>
             ) : (
               <>
-                <HeartPulse size={20} /> {`${sheet.characterName} Is Dying`}
+                <HeartPulse size={20} /> {`${character.name} Is Dying`}
               </>
             )}
           </div>
@@ -88,7 +86,6 @@ export default function Dying({ onStabilized }: Props) {
 
         {!isDead && (
           <>
-            {/* Death saves */}
             <div className="dying-saves">
               <div className="dying-save-row">
                 <span className="dying-save-label dying-save-label--success">Successes</span>
@@ -96,8 +93,8 @@ export default function Dying({ onStabilized }: Props) {
                   {[0, 1, 2].map(i => (
                     <div
                       key={i}
-                      className={`dying-pip dying-pip--success ${i < state.deathSaveSuccesses ? 'on' : ''}`}
-                      onClick={() => state.deathSaveSuccesses < 3 && recordDeathSave('success')}
+                      className={`dying-pip dying-pip--success ${i < character.deathSaves[0] ? 'on' : ''}`}
+                      onClick={() => character.deathSaves[0] < 3 && recordDeathSave('success')}
                     />
                   ))}
                 </div>
@@ -109,8 +106,8 @@ export default function Dying({ onStabilized }: Props) {
                   {[0, 1, 2].map(i => (
                     <div
                       key={i}
-                      className={`dying-pip dying-pip--fail ${i < state.deathSaveFailures ? 'on' : ''}`}
-                      onClick={() => state.deathSaveFailures < 3 && recordDeathSave('failure')}
+                      className={`dying-pip dying-pip--fail ${i < character.deathSaves[1] ? 'on' : ''}`}
+                      onClick={() => character.deathSaves[1] < 3 && recordDeathSave('failure')}
                     />
                   ))}
                 </div>
@@ -124,7 +121,6 @@ export default function Dying({ onStabilized }: Props) {
         )}
       </div>
 
-      {/* Stabilize confirmation */}
       {stabilizeModal && (
         <div className="dying-modal-overlay">
           <div className="dying-modal">

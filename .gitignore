@@ -27,3 +27,6 @@ dist-ssr
 worker/.dev.vars
 .dev.vars
 worker/.wrangler/
+
+# Copyright stuff
+Database

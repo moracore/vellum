@@ -6,25 +6,23 @@ import CharacterHeader from '../components/CharacterHeader'
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
 export default function Notes({ hideHeader }: { hideHeader?: boolean } = {}) {
-  const { state, saveNotesLocal, saveNotesCloud } = useCharacter()
-  const [draft, setDraft] = useState(state?.notes ?? '')
+  const { character, updateDescription, saveNotesLocal, saveNotesCloud } = useCharacter()
+  const [draft, setDraft] = useState(character?.notes ?? '')
   const [localStatus, setLocalStatus] = useState<SaveStatus>('idle')
   const [cloudStatus, setCloudStatus] = useState<SaveStatus>('idle')
   const draftRef = useRef(draft)
 
   useEffect(() => { draftRef.current = draft }, [draft])
 
-  // Auto-save draft to IDB when switching away from this tab
   useEffect(() => {
     return () => { void saveNotesLocal(draftRef.current) }
   }, [saveNotesLocal])
 
-  // Sync draft if notes change externally (e.g. conflict resolution)
   useEffect(() => {
-    if (state?.notes !== undefined) setDraft(state.notes)
-  }, [state?.notes]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (character?.notes !== undefined) setDraft(character.notes)
+  }, [character?.notes]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!state) return null
+  if (!character) return null
 
   const handleLocalSave = async () => {
     setLocalStatus('saving')
@@ -42,7 +40,17 @@ export default function Notes({ hideHeader }: { hideHeader?: boolean } = {}) {
 
   return (
     <div className="notes-page">
-      {!hideHeader && <CharacterHeader />}
+      {!hideHeader && (
+        <div className="notes-sticky">
+          <CharacterHeader />
+        </div>
+      )}
+      <textarea
+        className="notes-desc-textarea"
+        value={character.description}
+        onChange={e => updateDescription(e.target.value)}
+        placeholder="Character description..."
+      />
       <textarea
         className="notes-textarea"
         value={draft}

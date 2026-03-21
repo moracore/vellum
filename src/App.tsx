@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { ThemeProvider } from './context/ThemeContext'
 import { CharacterProvider, useCharacter } from './context/CharacterContext'
-import { findCharacter } from './data/characters'
-import { getSettings, saveSettings, getLastPullAt } from './db'
-import { syncAllCharacters, STALE_MS } from './lib/sync'
+import { getSettings, saveSettings, getLastPullAt, getDbSnapshot, saveDbSnapshot } from './db'
+import { syncAllCharacters, STALE_MS, fetchDb, DB_CACHE_TTL } from './lib/sync'
+import { db } from './lib/database'
 import CharacterSelect from './pages/CharacterSelect'
 import Stats from './pages/Stats'
+import Inventory from './pages/Inventory'
 import Traits from './pages/Traits'
 import Spells from './pages/Spells'
 import Notes from './pages/Notes'
@@ -14,7 +15,7 @@ import DMEdit from './pages/DMEdit'
 import Dying from './pages/Dying'
 import BottomNav from './components/BottomNav'
 
-type Tab = 'stats' | 'traits' | 'spells' | 'notes'
+type Tab = 'stats' | 'inventory' | 'traits' | 'spells' | 'notes'
 
 function useBreakpoint() {
   const get = () => {
@@ -36,29 +37,45 @@ function useBreakpoint() {
 import LevelUpModal from './components/LevelUpModal'
 
 function Shell() {
-  const { sheet, dmMode, setDmMode, loadCharacter, levelUpMsg, clearLevelUp } = useCharacter()
+  const { character, dmMode, setDmMode, levelUpMsg, clearLevelUp } = useCharacter()
   const [tab, setTab]               = useState<Tab>('stats')
   const [showSettings, setShowSettings] = useState(false)
   const [isDying, setIsDying]       = useState(false)
   const [initializing, setInitializing] = useState(true)
+  const [dbError, setDbError]       = useState(false)
   const bp = useBreakpoint()
 
-  // On mount: pull-all if stale, then auto-load saved player character
   useEffect(() => {
     void (async () => {
       try {
+        const cached = await getDbSnapshot()
+        const cacheAge = cached ? Date.now() - new Date(cached.fetchedAt).getTime() : Infinity
+        const cacheStale = cacheAge > DB_CACHE_TTL
+
+        if (cached && !cacheStale) {
+          db.loadFromSnapshot(cached.data)
+        } else {
+          try {
+            const data = await fetchDb()
+            await saveDbSnapshot({ fetchedAt: new Date().toISOString(), data })
+            db.loadFromSnapshot(data)
+          } catch {
+            if (cached) {
+              db.loadFromSnapshot(cached.data)
+            } else {
+              setDbError(true)
+              setInitializing(false)
+              return
+            }
+          }
+        }
+
         const lastPull = await getLastPullAt()
         const stale    = !lastPull || Date.now() - new Date(lastPull).getTime() > STALE_MS
 
         if (stale) await syncAllCharacters()
-
-        const s = await getSettings()
-        if (s.playerName) {
-          const result = await findCharacter(s.playerName)
-          if (result) await loadCharacter(result.id)
-        }
       } catch {
-        // Offline or worker unavailable — continue with whatever is in IDB
+        // Offline — continue with IDB
       } finally {
         setInitializing(false)
       }
@@ -66,20 +83,28 @@ function Shell() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (sheet?.playerName) {
-      getSettings().then(s => saveSettings({ ...s, playerName: sheet.playerName }))
+    if (character?.player) {
+      getSettings().then(s => saveSettings({ ...s, playerName: character.player }))
     }
-  }, [sheet?.playerName])
+  }, [character?.player])
 
   if (initializing) {
     return (
       <div className="loading-screen">
-        <span className="loading-text">Loading…</span>
+        <span className="loading-text">{db.loaded ? 'Loading character…' : 'Loading game data…'}</span>
       </div>
     )
   }
 
-  if (!sheet) return <CharacterSelect onLoaded={() => {}} />
+  if (dbError) {
+    return (
+      <div className="loading-screen">
+        <span className="loading-text">Connect to the internet to load game data</span>
+      </div>
+    )
+  }
+
+  if (!character) return <CharacterSelect onLoaded={() => {}} />
 
   const handleTabChange = (t: Tab) => {
     setDmMode(false)
@@ -87,7 +112,7 @@ function Shell() {
     setTab(t)
   }
 
-  const isCharGroup = tab === 'stats' || tab === 'traits'
+  const isCharGroup = tab === 'stats' || tab === 'inventory' || tab === 'traits'
 
   if (dmMode)       return <DMEdit onClose={() => setDmMode(false)} />
   if (showSettings) return (
@@ -98,10 +123,10 @@ function Shell() {
   )
 
   const openSettings = () => setShowSettings(true)
-  const overlay = (levelUpMsg && sheet) ? (
+  const overlay = (levelUpMsg && character) ? (
     <LevelUpModal
-      newLevel={sheet.level}
-      className={sheet.class}
+      newLevel={character.level}
+      className={character.class}
       onDismiss={clearLevelUp}
     />
   ) : null
@@ -163,7 +188,7 @@ function Shell() {
             </>
           )}
         </div>
-        <BottomNav activeTabs={isCharGroup ? ['stats', 'traits'] : ['spells', 'notes']} onChange={handleTabChange} />
+        <BottomNav activeTabs={isCharGroup ? ['stats', 'inventory', 'traits'] : ['spells', 'notes']} onChange={handleTabChange} />
       </div>
     )
   }
@@ -173,10 +198,11 @@ function Shell() {
     <div className="app-shell">
       {overlay}
       <main className="main-scroll">
-        {tab === 'stats'  && <Stats onOpenSettings={openSettings} onDying={() => setIsDying(true)} />}
-        {tab === 'traits' && <Traits />}
-        {tab === 'spells' && <Spells />}
-        {tab === 'notes'  && <Notes />}
+        {tab === 'stats'     && <Stats onOpenSettings={openSettings} onDying={() => setIsDying(true)} />}
+        {tab === 'inventory' && <Inventory />}
+        {tab === 'traits'    && <Traits />}
+        {tab === 'spells'    && <Spells />}
+        {tab === 'notes'     && <Notes />}
       </main>
       <BottomNav active={tab} onChange={handleTabChange} />
     </div>

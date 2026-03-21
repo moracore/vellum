@@ -2,60 +2,38 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { ThemeName } from '../types'
 import { getSettings, saveSettings } from '../db'
 
-const THEMES: ThemeName[] = ['dark', 'light', 'woodland', 'axe']
-const WOODLAND_ACCENT = '#56a882'
+const PALETTES: ThemeName[] = ['arcane', 'ember', 'verdant', 'frost', 'crimson', 'parchment']
 
 interface ThemeContextValue {
   theme: ThemeName
-  accentColor: string
-  cycleTheme: () => void
-  setAccentColor: (hex: string) => void
+  setTheme: (name: ThemeName) => void
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
-function hexToRgb(hex: string): string {
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  return `${r}, ${g}, ${b}`
-}
-
-function applyTheme(theme: ThemeName, accent: string) {
+function applyTheme(theme: ThemeName) {
   document.documentElement.setAttribute('data-theme', theme)
-  const effectiveAccent = theme === 'woodland' ? WOODLAND_ACCENT : accent
-  document.documentElement.style.setProperty('--accent', effectiveAccent)
-  document.documentElement.style.setProperty('--accent-rgb', hexToRgb(effectiveAccent))
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<ThemeName>('dark')
-  const [accentColor, setAccentColorState] = useState('#c9a84c')
+  const [theme, setThemeState] = useState<ThemeName>('arcane')
 
   useEffect(() => {
     getSettings().then((s) => {
-      setTheme(s.theme)
-      setAccentColorState(s.accentColor)
-      applyTheme(s.theme, s.accentColor)
+      const valid: ThemeName = PALETTES.includes(s.theme as ThemeName) ? s.theme as ThemeName : 'arcane'
+      setThemeState(valid)
+      applyTheme(valid)
     })
   }, [])
 
-  const cycleTheme = () => {
-    const next = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]
-    setTheme(next)
-    applyTheme(next, accentColor)
-    saveSettings({ theme: next, accentColor })
-  }
-
-  const setAccentColor = (hex: string) => {
-    if (theme === 'woodland') return
-    setAccentColorState(hex)
-    applyTheme(theme, hex)
-    saveSettings({ theme, accentColor: hex })
+  const setTheme = (name: ThemeName) => {
+    setThemeState(name)
+    applyTheme(name)
+    saveSettings({ theme: name })
   }
 
   return (
-    <ThemeContext.Provider value={{ theme, accentColor, cycleTheme, setAccentColor }}>
+    <ThemeContext.Provider value={{ theme, setTheme }}>
       {children}
     </ThemeContext.Provider>
   )

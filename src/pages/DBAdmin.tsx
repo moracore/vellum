@@ -3,13 +3,10 @@ import { getAllCharacterRecords, saveCharacterRecord, deleteCharacterRecord } fr
 import type { CharacterRecord } from '../db'
 import { syncAllCharacters, pushCharacter } from '../lib/sync'
 import type { PushSuccess } from '../lib/sync'
+import type { CharacterData } from '../types'
 
 interface Props {
   onClose: () => void
-}
-
-function charNameFrom(md: string): string {
-  return md.split('\n').find(l => l.startsWith('# '))?.slice(2).trim() ?? 'Unknown'
 }
 
 function RecordEditor({
@@ -21,7 +18,7 @@ function RecordEditor({
   onBack: (updated: CharacterRecord) => void
   onDeleted: () => void
 }) {
-  const [editMd, setEditMd]   = useState(record.markdown)
+  const [editJson, setEditJson] = useState(JSON.stringify(record.data, null, 2))
   const [current, setCurrent] = useState(record)
   const [status, setStatus]   = useState('')
   const [busy, setBusy]       = useState(false)
@@ -31,11 +28,14 @@ function RecordEditor({
   const handleSaveLocal = async () => {
     setBusy(true)
     try {
+      const parsed: CharacterData = JSON.parse(editJson)
       const now     = new Date().toISOString()
-      const updated = { ...current, markdown: editMd, updatedAt: now, synced: false }
+      const updated = { ...current, data: parsed, updatedAt: now, synced: false }
       await saveCharacterRecord(updated)
       setCurrent(updated)
       flash('Saved locally')
+    } catch (e) {
+      flash('Invalid JSON')
     } finally {
       setBusy(false)
     }
@@ -45,10 +45,11 @@ function RecordEditor({
     setBusy(true)
     setStatus('Pushing…')
     try {
+      const parsed: CharacterData = JSON.parse(editJson)
       const now    = new Date().toISOString()
-      const result = await pushCharacter(current.id, editMd, now, true)
+      const result = await pushCharacter(current.id, parsed, now, true)
       const ts     = (result as PushSuccess).updated_at ?? now
-      const updated = { ...current, markdown: editMd, updatedAt: ts, synced: true }
+      const updated = { ...current, data: parsed, updatedAt: ts, synced: true }
       await saveCharacterRecord(updated)
       setCurrent(updated)
       flash('Pushed to server ✓')
@@ -83,14 +84,14 @@ function RecordEditor({
           {current.synced ? '● synced' : '○ unsynced'}
         </span>
         <span className="db-admin-ts">{new Date(current.updatedAt).toLocaleString()}</span>
-        {current.conflictServerMarkdown && (
+        {current.conflictServerData && (
           <span className="db-admin-conflict-badge">⚠ conflict</span>
         )}
       </div>
       <textarea
         className="dm-textarea"
-        value={editMd}
-        onChange={e => setEditMd(e.target.value)}
+        value={editJson}
+        onChange={e => setEditJson(e.target.value)}
         spellCheck={false}
         autoCapitalize="none"
         autoCorrect="off"
@@ -165,10 +166,10 @@ export default function DBAdmin({ onClose }: Props) {
         {records.map(r => (
           <div key={r.id} className="db-admin-row" onClick={() => setEditing(r)}>
             <div className="db-admin-row-info">
-              <span className="db-admin-row-name">{charNameFrom(r.markdown)}</span>
+              <span className="db-admin-row-name">{r.data.name}</span>
               <span className="db-admin-row-meta">
                 {r.id} · {new Date(r.updatedAt).toLocaleString()}
-                {r.conflictServerMarkdown && ' · ⚠ conflict'}
+                {r.conflictServerData && ' · ⚠ conflict'}
               </span>
             </div>
             <div className="db-admin-row-right">

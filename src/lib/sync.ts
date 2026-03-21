@@ -4,49 +4,54 @@
 import {
   getAllCharacterRecords,
   saveCharacterRecord,
+  deleteCharacterRecord,
   saveLastPullAt,
 } from '../db'
+
+import type { CharacterData } from '../types'
 
 const WORKER_URL = (import.meta.env.VITE_WORKER_URL as string | undefined) ?? ''
 
 /** Treat local IDB cache as stale after this many ms. */
 export const STALE_MS = 5 * 60 * 1000
 
-// ─── Payload types ────────────────────────────────────────────────────────────
+/** Treat DB cache as stale after 24 hours. */
+export const DB_CACHE_TTL = 24 * 60 * 60 * 1000
 
-/** One character row as returned by GET /characters or GET /characters/:id */
-export interface RemoteCharacter {
-  id: string          // e.g. "fido"
-  name: string        // e.g. "Fido"  (human-readable label in the sheet)
-  markdown: string
-  updated_at: string  // ISO 8601 UTC — e.g. "2025-03-09T14:00:00.000Z"
+import type { RawDbTables } from '../db'
+
+/** Fetch the entire 5e reference database from the worker. */
+export async function fetchDb(): Promise<RawDbTables> {
+  const res = await fetch(`${WORKER_URL}/db`)
+  if (!res.ok) throw new Error(`DB fetch error ${res.status}: ${await res.text()}`)
+  return res.json() as Promise<RawDbTables>
 }
 
-/**
- * Body sent on PUT /characters/:id
- *
- * `force: true` bypasses the conflict check.  The client sets this when the
- * user explicitly chooses to overwrite the server version after a conflict.
- */
+// ─── Payload types ────────────────────────────────────────────────────────────
+
+/** One character as returned by GET /characters or GET /characters/:id */
+export interface RemoteCharacter {
+  data: CharacterData
+  updated_at: string  // ISO 8601 UTC
+}
+
+/** Body sent on PUT /characters/:id */
 export interface PushRequest {
-  markdown: string
-  local_updated_at: string  // client's current timestamp for this record
+  data: CharacterData
+  local_updated_at: string
   force?: boolean
 }
 
 /** Worker response (HTTP 200) when the write succeeds */
 export interface PushSuccess {
   ok: true
-  updated_at: string  // canonical UTC timestamp the worker wrote to the sheet
+  updated_at: string
 }
 
-/**
- * Worker response (HTTP 409) when the server copy is newer than local_updated_at
- * and `force` was not set.  The client must surface conflict resolution UI.
- */
+/** Worker response (HTTP 409) when the server copy is newer */
 export interface PushConflict {
   conflict: true
-  server_markdown: string
+  server_data: CharacterData
   server_updated_at: string
 }
 
@@ -54,7 +59,7 @@ export type PushResult = PushSuccess | PushConflict
 
 // ─── Low-level API calls ──────────────────────────────────────────────────────
 
-/** Fetch every character row.  Used on startup to seed / refresh local IDB. */
+/** Fetch every character.  Used on startup to seed / refresh local IDB. */
 export async function fetchAllCharacters(): Promise<RemoteCharacter[]> {
   const res = await fetch(`${WORKER_URL}/characters`)
   if (!res.ok) throw new Error(`Sync error ${res.status}: ${await res.text()}`)
@@ -69,19 +74,14 @@ export async function fetchCharacter(id: string): Promise<RemoteCharacter | null
   return res.json() as Promise<RemoteCharacter>
 }
 
-/**
- * Push a character to the worker.
- *
- * Returns PushConflict (HTTP 409) if the server has a newer version and
- * `force` is false.  Throws on network / server errors.
- */
+/** Push a character to the worker. */
 export async function pushCharacter(
   id: string,
-  markdown: string,
+  data: CharacterData,
   localUpdatedAt: string,
   force = false,
 ): Promise<PushResult> {
-  const body: PushRequest = { markdown, local_updated_at: localUpdatedAt }
+  const body: PushRequest = { data, local_updated_at: localUpdatedAt }
   if (force) body.force = true
 
   const res = await fetch(`${WORKER_URL}/characters/${encodeURIComponent(id)}`, {
@@ -89,7 +89,6 @@ export async function pushCharacter(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  // 409 is an expected application-level response, not an error
   if (res.status === 409) return res.json() as Promise<PushConflict>
   if (!res.ok) throw new Error(`Sync error ${res.status}: ${await res.text()}`)
   return res.json() as Promise<PushSuccess>
@@ -112,12 +111,12 @@ export async function syncAllCharacters(): Promise<void> {
   const localById = new Map(locals.map(r => [r.id, r]))
 
   for (const remote of remotes) {
-    const local = localById.get(remote.id)
+    const local = localById.get(remote.data.id)
 
     if (!local) {
       await saveCharacterRecord({
-        id: remote.id,
-        markdown: remote.markdown,
+        id: remote.data.id,
+        data: remote.data,
         updatedAt: remote.updated_at,
         synced: true,
       })
@@ -127,23 +126,27 @@ export async function syncAllCharacters(): Promise<void> {
     const serverNewer = new Date(remote.updated_at) > new Date(local.updatedAt)
 
     if (local.synced && serverNewer) {
-      // Safe to overwrite — local has no pending changes
       await saveCharacterRecord({
         id: local.id,
-        markdown: remote.markdown,
+        data: remote.data,
         updatedAt: remote.updated_at,
         synced: true,
       })
     } else if (!local.synced && serverNewer) {
-      // Conflict: unsynced local changes AND server is ahead.
-      // Store server data alongside local so the user can resolve it.
       await saveCharacterRecord({
         ...local,
-        conflictServerMarkdown:  remote.markdown,
+        conflictServerData:      remote.data,
         conflictServerUpdatedAt: remote.updated_at,
       })
     }
-    // else: local is equal or newer — keep as-is; will push on next save.
+  }
+
+  // Remove local records that no longer exist on the server (deleted remotely).
+  const remoteIds = new Set(remotes.map(r => r.data.id))
+  for (const local of locals) {
+    if (!remoteIds.has(local.id) && local.synced) {
+      await deleteCharacterRecord(local.id)
+    }
   }
 
   await saveLastPullAt(new Date().toISOString())

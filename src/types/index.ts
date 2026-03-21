@@ -1,10 +1,11 @@
-export type ThemeName = 'dark' | 'light' | 'woodland' | 'axe'
+export type ThemeName = 'arcane' | 'ember' | 'verdant' | 'frost' | 'crimson' | 'parchment'
 
 export interface AppSettings {
   theme: ThemeName
-  accentColor: string
   playerName?: string
 }
+
+// ── Ability scores (kept as named object for mod-computation convenience) ─────
 
 export interface AbilityScores {
   str: number
@@ -17,80 +18,26 @@ export interface AbilityScores {
 
 export type Ability = keyof AbilityScores
 
-export interface SavingThrows {
-  str: boolean
-  dex: boolean
-  con: boolean
-  int: boolean
-  wis: boolean
-  cha: boolean
-}
+// ── Unified character data ───────────────────────────────────────────────────
 
-export interface SkillProficiency {
-  proficient: boolean
-  expertise: boolean
-  bonus?: number // flat bonus added on top of ability mod + proficiency
-}
-
-export interface Skills {
-  acrobatics: SkillProficiency
-  animalHandling: SkillProficiency
-  arcana: SkillProficiency
-  athletics: SkillProficiency
-  deception: SkillProficiency
-  history: SkillProficiency
-  insight: SkillProficiency
-  intimidation: SkillProficiency
-  investigation: SkillProficiency
-  medicine: SkillProficiency
-  nature: SkillProficiency
-  perception: SkillProficiency
-  performance: SkillProficiency
-  persuasion: SkillProficiency
-  religion: SkillProficiency
-  sleightOfHand: SkillProficiency
-  stealth: SkillProficiency
-  survival: SkillProficiency
-}
-
-export interface Currency {
-  gp: number
-  sp: number
-  cp: number
-}
-
-export interface SpellSlots {
-  max: number
-  current: number
-}
-
-export interface Spell {
-  name: string
-  level: number // 0 = cantrip
-  school: string
-  castingTime: string
-  range: string
-  components: string
-  duration: string
-  description: string
-  prepared: boolean
-}
-
-export interface CharacterSheet {
+export interface CharacterData {
   // Identity
-  playerName: string
-  characterName: string
+  id: string
+  name: string           // character name
+  player: string         // player name
+  passkey: string        // 5-letter sign-in word
   class: string
-  subclass?: string
+  subclass: string | null
   level: number
   race: string
   alignment: string
-  deity?: string
+  deity: string | null
 
-  // Core stats
+  // Abilities
   abilityScores: AbilityScores
-  savingThrows: SavingThrows
-  skills: Skills
+  savingThrows: number[]            // ability IDs with proficiency (e.g. [5,6] for WIS+CHA)
+  skills: number[]                  // skill IDs with proficiency
+  skillDetails: Record<string, string>  // skill_id -> "expertise" | "+N"
 
   // Combat
   maxHp: number
@@ -99,54 +46,48 @@ export interface CharacterSheet {
   ac: number
   initiative: number
   speed: number
+  hitDice: string                   // e.g. "5d10"
+  hitDiceCurrent: number
   proficiencyBonus: number
-  hitDice: string // e.g. "1d8"
-
-  // Death saves
-  deathSaveSuccesses: number
-  deathSaveFailures: number
-
-  // Conditions
+  deathSaves: [number, number]      // [successes, failures]
   conditions: string[]
-
-  // Languages & proficiencies
-  languages: string[]
-  otherProficiencies: string
-  raceTraits: string[]
-  extraTraits: string[]
-  aliases: string[]
 
   // Spellcasting
-  spellcastingAbility?: Ability
-  spellAttackBonus?: number
-  spellSaveDc?: number
-  spellSlots: SpellSlots[] // index 0 = level 1, index 1 = level 2, etc.
-  spells: Spell[]
+  spellAbility: number | null       // ability ID (1=STR..6=CHA)
+  spellAttackBonus: number | null
+  spellSaveDc: number | null
+  spellSlots: number[]              // 9 entries: current count per level 1-9
+  spellSlotsMax: number[]           // 9 entries: max count per level 1-9
+  spellsByLevel: number[][]         // 10 entries: index 0=cantrips, 1=lv1..9=lv9 — spell IDs
+  preparedSpells: number[]          // spell IDs that are currently prepared
 
-  // Currency
-  currency: Currency
+  // Currency & Equipment
+  currency: [number, number, number]  // [gp, sp, cp]
+  equipment: [string | null, string | null, string | null]  // [armor, weapon1, weapon2]
 
-  // Items (free text)
-  items: string
+  // Inventory (slot-based)
+  onPerson: string[]     // up to 5
+  bag: string[]          // main bag, up to 20
+  bag2: string[]
+  bag3: string[]
+  bag4: string[]
+  bag5: string[]
+  sack1: string[]        // up to 3
+  sack2: string[]
+  sack3: string[]
+  sack4: string[]
+  sack5: string[]
+  bagOfHolding: string[] // unlimited
 
-  // Notes (free text)
-  notes: string
-
-  // Player-confirmed feature choices (e.g. subclass, fighting style)
-  choices: Record<string, string>
-}
-
-// Stored in IndexedDB — runtime mutable fields
-export interface CharacterState {
-  id: string // numeric timestamp string (or legacy characterName lowercase)
-  currentHp: number
-  tempHp: number
-  deathSaveSuccesses: number
-  deathSaveFailures: number
-  conditions: string[]
-  spellSlots: SpellSlots[]
-  currency: Currency
-  items: string
+  // Metadata
   notes: string
   description: string
+  choices: Record<string, string>
+  traits: number[]       // extra/class trait IDs
+  raceTraits: number[]   // race trait IDs
+  resources: Record<number, { current: number; max: number }>
+  languages: string[]
+  otherProficiencies: string
+  aliases: string[]
 }
+

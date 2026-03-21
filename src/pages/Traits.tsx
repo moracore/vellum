@@ -1,198 +1,266 @@
 import { useState } from 'react'
 import { useCharacter } from '../context/CharacterContext'
 import CharacterHeader from '../components/CharacterHeader'
-import { CLASS_FEATURES } from '../data/classFeatures'
+import ResourceTracker from '../components/ResourceTracker'
+import { db } from '../lib/database'
+import type { TraitRow } from '../lib/database'
 import { CHOICE_DESCRIPTIONS } from '../data/choiceDescriptions'
-import { RACES } from '../data/races5e'
-import type { Currency } from '../types'
 
-const CURRENCY_KEYS: { key: keyof Currency; label: string; color: string }[] = [
-  { key: 'gp', label: 'GP', color: '#ffd700' },
-  { key: 'sp', label: 'SP', color: '#aaaaaa' },
-  { key: 'cp', label: 'CP', color: '#b87333' },
-]
+const FIGHTING_STYLE_NAMES = new Set([
+  'Archery', 'Defense', 'Dueling', 'Great Weapon Fighting', 'Protection',
+  'Two-Weapon Fighting', 'Blind Fighting', 'Interception', 'Superior Technique',
+  'Thrown Weapon Fighting', 'Unarmed Fighting', 'Blessed Warrior', 'Druidic Warrior',
+])
+
+interface ResolvedTrait {
+  key: string
+  name: string
+  description: string
+  type: 'P' | 'A' | 'R'
+  traitId: number | null
+  grantedSpells: { name: string; level: number; usesPerRest: number | null }[]
+}
 
 export default function Traits({ hideHeader }: { hideHeader?: boolean } = {}) {
-  const { sheet, state, updateCurrency, updateItems } = useCharacter()
-  const [coinEdit, setCoinEdit] = useState<keyof Currency | null>(null)
-  const [coinInput, setCoinInput] = useState('')
+  const { character, useResource, gainResource } = useCharacter()
+  const [expanded, setExpanded] = useState<string | null>(null)
 
-  if (!sheet || !state) return null
+  if (!character) return null
 
-  const classKey = Object.keys(CLASS_FEATURES).find(
-    k => k.toLowerCase() === sheet.class.toLowerCase()
-  )
-  const allFeatures = classKey ? CLASS_FEATURES[classKey] : []
-  const features = allFeatures.filter(f => f.level <= sheet.level)
+  // ── Resolve class/race IDs from names ──
+  const classRow = db.loaded
+    ? db.classes.find(c => c.name.toLowerCase() === character.class.toLowerCase())
+    : undefined
+  const classId = classRow?.class_id ?? null
 
-  // Separate normal features from subclass-linked ones
-  const mainFeatures = features.filter(f => !f.linkedChoice)
-  const linkedFeatures = features.filter(f => f.linkedChoice)
+  const subclassRow = db.loaded && classId && character.subclass
+    ? db.getSubclassesForClass(classId).find(
+        s => s.name.toLowerCase() === character.subclass!.toLowerCase()
+      )
+    : undefined
+  const subclassId = subclassRow?.subclass_id ?? null
 
-  // Names to strip from legacy extraTraits: class features + subrace-choice placeholders
-  const classFeatureNames = new Set(allFeatures.map(f => f.name))
-  const raceData = RACES.find(r => r.name === sheet.race)
-  const subraceChoiceNames = new Set(
-    (raceData?.traits ?? []).filter(t => t.isSubraceChoice).map(t => t.name)
-  )
+  const raceRow = db.loaded
+    ? db.races.find(r => r.name.toLowerCase() === character.race.toLowerCase())
+    : undefined
 
-  // For characters created before raceTraits existed, extraTraits may contain race/class content.
-  // Filter class features and subrace-choice placeholders out so they don't appear twice or wrongly.
-  // Never filter proficiency entries.
-  const profPrefixes = new Set(['Weapon Proficiencies', 'Armour Proficiencies', 'Tool Proficiencies'])
-  const cleanedExtras = (sheet.extraTraits ?? []).filter(entry => {
-    const name = entry.split(':')[0].trim()
-    if (profPrefixes.has(name)) return true
-    return !classFeatureNames.has(name) && !subraceChoiceNames.has(name)
-  })
+  // ── Helper: resolve granted spells for a trait ──
+  const resolveTraitSpells = (traitId: number): ResolvedTrait['grantedSpells'] => {
+    const grants = db.getTraitSpells(traitId, character.level)
+    return grants.map(ts => {
+      const spell = db.spells.get(ts.spell_id)
+      return {
+        name: spell?.name ?? `Spell #${ts.spell_id}`,
+        level: spell?.level ?? 0,
+        usesPerRest: ts.uses_per_rest,
+      }
+    })
+  }
 
-  // If raceTraits field exists and is populated, use it; otherwise fall back to cleaned extras as race traits.
-  const displayRaceTraits = (sheet.raceTraits ?? []).length > 0
-    ? sheet.raceTraits
-    : cleanedExtras
-  const displayExtraTraits = (sheet.raceTraits ?? []).length > 0 ? cleanedExtras : []
+  // ── Helper: convert TraitRow to ResolvedTrait ──
+  const toResolved = (trait: TraitRow, source: string): ResolvedTrait => {
+    const typeMap: Record<string, 'P' | 'A' | 'R'> = {
+      passive: 'P', active: 'A', resource: 'R',
+    }
+    return {
+      key: `${source}-${trait.trait_id}`,
+      name: trait.name,
+      description: trait.description,
+      type: typeMap[trait.feature_type] ?? 'P',
+      traitId: trait.trait_id,
+      grantedSpells: resolveTraitSpells(trait.trait_id),
+    }
+  }
 
-  const commitCoin = (key: keyof Currency) => {
-    const v = parseInt(coinInput)
-    if (!isNaN(v) && v >= 0) updateCurrency({ ...state.currency, [key]: v })
-    setCoinEdit(null)
-    setCoinInput('')
+  // ── Gather traits from DB, split by class vs subclass ──
+  const coreClassTraits: ResolvedTrait[] = []
+  const subclassTraits: ResolvedTrait[] = []
+  let raceTraits: ResolvedTrait[] = []
+
+  if (db.loaded && classId !== null) {
+    for (let lv = 1; lv <= character.level; lv++) {
+      const rows = db.getProgressionAtLevel(classId, subclassId, lv)
+      for (const r of rows) {
+        const traits = r.feature_ids
+          .map(id => db.getTrait(id))
+          .filter((t): t is TraitRow => t !== undefined)
+          .filter(t => t.feature_type !== 'choice')
+        for (const t of traits) {
+          const resolved = toResolved(t, r.subclass_id !== null ? 'subclass' : 'class')
+          if (r.subclass_id !== null) {
+            subclassTraits.push(resolved)
+          } else {
+            coreClassTraits.push(resolved)
+          }
+        }
+      }
+    }
+  }
+
+  if (db.loaded && raceRow) {
+    raceTraits = raceRow.trait_ids
+      .map(id => db.getTrait(id))
+      .filter((t): t is TraitRow => t !== undefined)
+      .map(t => toResolved(t, 'race'))
+  }
+
+  // ── Extract feats, epic boons, and fighting styles from choices ──
+  const feats: ResolvedTrait[] = []
+  const epicBoons: ResolvedTrait[] = []
+  const fightingStyles: ResolvedTrait[] = []
+
+  if (db.loaded && character.choices) {
+    for (const [key, val] of Object.entries(character.choices)) {
+      if (!val) continue
+
+      if (/^feat_\d+$/.test(key)) {
+        const epicBoon = db.epicBoonFeats.find(f => f.name.toLowerCase() === val.toLowerCase())
+        if (epicBoon) {
+          epicBoons.push({
+            key: `boon-${key}`, name: epicBoon.name, description: epicBoon.description,
+            type: 'P', traitId: null, grantedSpells: [],
+          })
+        } else {
+          const generalFeat = db.generalFeats.find(f => f.name.toLowerCase() === val.toLowerCase())
+          feats.push({
+            key: `feat-${key}`, name: val,
+            description: generalFeat?.description ?? CHOICE_DESCRIPTIONS[val] ?? '',
+            type: 'P', traitId: null, grantedSpells: [],
+          })
+        }
+        continue
+      }
+
+      if (FIGHTING_STYLE_NAMES.has(val)) {
+        const fsFeat = db.generalFeats.find(f => f.name.toLowerCase() === val.toLowerCase())
+        fightingStyles.push({
+          key: `fstyle-${key}`, name: val,
+          description: fsFeat?.description ?? CHOICE_DESCRIPTIONS[val] ?? '',
+          type: 'P', traitId: null, grantedSpells: [],
+        })
+        continue
+      }
+    }
+  }
+
+  // ── Ensure resource entries exist for resource traits ──
+  const allTraits = [...coreClassTraits, ...subclassTraits, ...raceTraits]
+  for (const rt of allTraits) {
+    if (rt.type === 'R' && rt.traitId !== null && !(rt.traitId in character.resources)) {
+      const maxVal = db.getFeatureBonus(rt.traitId, character.level, 'uses')
+        ?? db.getFeatureBonus(rt.traitId, character.level, `${rt.name.toLowerCase().replace(/\s+/g, '_')}_uses`)
+        ?? 0
+      if (maxVal > 0) {
+        character.resources[rt.traitId] = { current: maxVal, max: maxVal }
+      }
+    }
+  }
+
+  // ── Extra traits (resolved from IDs) ──
+  const extraTraitsResolved: ResolvedTrait[] = db.loaded
+    ? (character.traits ?? [])
+        .map(id => db.getTrait(id))
+        .filter((t): t is TraitRow => t !== undefined)
+        .map(t => toResolved(t, 'extra'))
+    : []
+
+  const toggle = (id: string) => setExpanded(expanded === id ? null : id)
+
+  const renderTraitCard = (trait: ResolvedTrait) => {
+    const isExpanded = expanded === trait.key
+    const resource = trait.traitId !== null ? character.resources[trait.traitId] : undefined
+    const hasDetail = trait.description || (trait.type === 'R' && resource) || trait.grantedSpells.length > 0
+
+    return (
+      <div key={trait.key} className="trait-card">
+        <div className="trait-header" onClick={() => hasDetail && toggle(trait.key)}>
+          <div className="trait-header-left">
+            <span className={`trait-tag trait-tag--${trait.type.toLowerCase()}`}>{trait.type}</span>
+            <span className="trait-name">{trait.name}</span>
+          </div>
+          <div className="trait-header-right">
+            {hasDetail && <span className="trait-chevron">{isExpanded ? '▲' : '▼'}</span>}
+          </div>
+        </div>
+        {isExpanded && hasDetail && (
+          <div className="trait-detail">
+            {trait.description && <p className="trait-desc">{trait.description}</p>}
+            {trait.grantedSpells.length > 0 && (
+              <div className="trait-spells">
+                {trait.grantedSpells.map(gs => (
+                  <span key={gs.name} className="trait-spell-badge">
+                    {gs.name}
+                    {gs.usesPerRest !== null && <span className="trait-spell-uses"> ({gs.usesPerRest}/rest)</span>}
+                  </span>
+                ))}
+              </div>
+            )}
+            {trait.type === 'R' && resource && (
+              <ResourceTracker
+                current={resource.current}
+                max={resource.max}
+                onUse={() => useResource(trait.traitId!)}
+                onGain={() => gainResource(trait.traitId!)}
+              />
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const renderGroup = (heading: string, items: ResolvedTrait[]) => {
+    if (items.length === 0) return null
+    return (
+      <div className="trait-level-group">
+        <div className="traits-group-heading">{heading}</div>
+        {items.map(renderTraitCard)}
+      </div>
+    )
   }
 
   return (
     <div className="traits-page">
-
       <div className="traits-sticky">
         {!hideHeader && <CharacterHeader />}
       </div>
 
-      <div className="traits-list">
+      <div className="traits-scroll">
+        <div className="trait-columns">
+          {/* Left column: Class + Subclass traits */}
+          <div className="trait-col trait-col--left">
+            {db.loaded && coreClassTraits.length > 0 && renderGroup('Class Traits', coreClassTraits)}
 
-        {/* ── Race Traits ── */}
-        {displayRaceTraits.length > 0 && (
-          <>
-            <div className="traits-section-header">Race Traits</div>
-            {displayRaceTraits.map((name, i) => {
-              const [title, ...rest] = name.split(': ')
-              return (
-                <div key={`race-${i}`} className="trait-card">
-                  <div className="trait-title-row">
-                    <span className="trait-name">{title}</span>
-                    <span className="trait-level">{sheet.race}</span>
-                  </div>
-                  {rest.length > 0 && <div className="trait-desc">{rest.join(': ')}</div>}
-                </div>
-              )
-            })}
-          </>
-        )}
-
-        {/* ── Class Traits ── */}
-        <div className="traits-section-header">Class Traits</div>
-        {mainFeatures.length === 0 ? (
-          <div className="trait-no-class">
-            {sheet.class ? `No features found for ${sheet.class}.` : 'No class set.'}
-          </div>
-        ) : (
-          mainFeatures.map((f, i) => {
-            const confirmed = f.choice ? sheet.choices[f.choice.key] : undefined
-
-            // Sub-features linked to this choice
-            const subfeatures = f.choice
-              ? linkedFeatures.filter(lf => lf.linkedChoice === f.choice!.key)
-              : []
-
-            return (
-              <div key={i} className="trait-card">
-                <div className="trait-title-row">
-                  <span className="trait-name">{f.name}</span>
-                  <span className="trait-level">Lv {f.level}</span>
-                </div>
-
-                {confirmed ? (
-                  <>
-                    <div className="trait-confirmed">
-                      <span className="trait-confirmed-label">{f.choice!.label}:</span>
-                      <span className="trait-confirmed-value">{confirmed}</span>
-                    </div>
-                    {CHOICE_DESCRIPTIONS[confirmed] && (
-                      <p className="trait-desc" style={{ marginTop: 6 }}>
-                        {CHOICE_DESCRIPTIONS[confirmed]}
-                      </p>
-                    )}
-                    {subfeatures.length > 0 && (
-                      <div className="trait-subfeatures">
-                        {subfeatures.map((sf, j) => (
-                          <div key={j} className="trait-subfeature">
-                            <span className="trait-subfeature-lv">Lv {sf.level}</span>
-                            <span className="trait-subfeature-name">{confirmed} Feature</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="trait-desc">{f.description}</div>
-                )}
+            {db.loaded && coreClassTraits.length === 0 && (
+              <div className="trait-level-group">
+                <div className="traits-group-heading">Class Traits</div>
+                <div className="traits-empty">{character.class ? `No features found for ${character.class}.` : 'No class set.'}</div>
               </div>
-            )
-          })
-        )}
+            )}
 
-        {/* ── Extra Traits ── */}
-        {displayExtraTraits.length > 0 && (
-          <>
-            <div className="traits-section-header">Extra Traits</div>
-            {displayExtraTraits.map((name, i) => {
-              const [title, ...rest] = name.split(': ')
-              return (
-                <div key={`extra-${i}`} className="trait-card">
-                  <div className="trait-title-row">
-                    <span className="trait-name">{title}</span>
-                  </div>
-                  {rest.length > 0 && <div className="trait-desc">{rest.join(': ')}</div>}
-                </div>
-              )
-            })}
-          </>
-        )}
+            {db.loaded && renderGroup(
+              character.subclass ? `${character.subclass} Traits` : 'Subclass Traits',
+              subclassTraits
+            )}
 
-      </div>
+            {!db.loaded && (
+              <div className="trait-level-group">
+                <div className="traits-group-heading">Class Traits</div>
+                <div className="traits-empty">Loading game data...</div>
+              </div>
+            )}
+          </div>
 
-      {/* Currency + Items */}
-      <div className="traits-items">
-        <div className="sheet-currency">
-          {CURRENCY_KEYS.map(({ key, label, color }) => (
-            <div
-              key={key}
-              className={`sheet-coin ${coinEdit === key ? 'active' : ''}`}
-              onClick={() => { setCoinEdit(key); setCoinInput(String(state.currency[key])) }}
-            >
-              <span className="sheet-coin-symbol" style={{ background: color }} />
-              {coinEdit === key
-                ? <input
-                    className="sheet-coin-input"
-                    type="text" inputMode="numeric" pattern="[0-9]*" value={coinInput} autoFocus
-                    onChange={e => setCoinInput(e.target.value.replace(/\D/g, ''))}
-                    onBlur={() => commitCoin(key)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') commitCoin(key)
-                      if (e.key === 'Escape') { setCoinEdit(null); setCoinInput('') }
-                    }}
-                  />
-                : <span className="sheet-coin-val">{state.currency[key]}</span>}
-              <span className="sheet-coin-lbl">{label}</span>
-            </div>
-          ))}
+          {/* Right column: Race, Feats, Fighting Styles, etc. */}
+          <div className="trait-col trait-col--right">
+            {db.loaded && renderGroup('Race Traits', raceTraits)}
+            {db.loaded && renderGroup('Fighting Styles', fightingStyles)}
+            {db.loaded && renderGroup('Feats', feats)}
+            {db.loaded && renderGroup('Epic Boons', epicBoons)}
+            {db.loaded && renderGroup('Extra Traits', extraTraitsResolved)}
+          </div>
         </div>
-        <textarea
-          className="sheet-items-textarea traits-textarea"
-          value={state.items}
-          onChange={e => updateItems(e.target.value)}
-          placeholder="Items & equipment..."
-        />
       </div>
-
     </div>
   )
 }
