@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useCharacter } from '../context/CharacterContext'
 import CharacterHeader from '../components/CharacterHeader'
 import { db } from '../lib/database'
@@ -188,10 +188,7 @@ export default function Inventory({ hideHeader }: { hideHeader?: boolean } = {})
 
   // ── Mutations ──
 
-  const setContainer = (key: ContainerKey, value: string[]) =>
-    updateCharacter({ [key]: value } as Partial<CharacterData>)
-
-  const commitSlot = (idx: number, text: string) => {
+  const commitSlot = (_idx: number, text: string) => {
     setEditingSlot(null)
     setEditValue('')
     const trimmed = text.trim()

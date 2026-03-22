@@ -80,8 +80,6 @@ export default function SpellChooser({ onClose }: Props) {
     }
   }
 
-  const [toRemove, setToRemove] = useState<Set<number>>(new Set())
-
   const selectedCantrips = [...selected].filter(id => {
     const s = allClassSpells.find(sp => sp.spell_id === id)
     return s?.level === 0
@@ -107,8 +105,7 @@ export default function SpellChooser({ onClose }: Props) {
 
 
   const confirmLearn = () => {
-    // Build new spellsByLevel: keep existing minus removed, add selected
-    const newByLevel = character.spellsByLevel.map(ids => ids.filter(id => !toRemove.has(id)))
+    const newByLevel = character.spellsByLevel.map(ids => [...ids])
 
     // Add selected spells to their correct levels
     for (const spellId of selected) {
@@ -118,8 +115,7 @@ export default function SpellChooser({ onClose }: Props) {
       newByLevel[spell.level].push(spellId)
     }
 
-    // Update prepared spells: remove any that were removed from the list
-    const newPrepared = character.preparedSpells.filter(id => !toRemove.has(id))
+    const newPrepared = [...character.preparedSpells]
 
     updateSpells(newByLevel, newPrepared)
     onClose()
@@ -127,7 +123,7 @@ export default function SpellChooser({ onClose }: Props) {
 
   const remainingCantrips = slotsCantrips - selectedCantrips
   const remainingSpells = isPreparedCaster ? null : slotsSpells - selectedLeveled
-  const hasChanges = selected.size > 0 || toRemove.size > 0
+  const hasChanges = selected.size > 0
 
   return (
     <div className="chooser-page">
@@ -152,8 +148,7 @@ export default function SpellChooser({ onClose }: Props) {
           )}
           {isPreparedCaster && (
             <span className="chooser-count">
-              {selected.size > 0 ? `+${selected.size}` : ''}{toRemove.size > 0 ? ` −${toRemove.size}` : ''}
-              {selected.size === 0 && toRemove.size === 0 ? 'Add or remove spells' : ''}
+              {selected.size > 0 ? `+${selected.size}` : 'Add spells'}
             </span>
           )}
         </div>
