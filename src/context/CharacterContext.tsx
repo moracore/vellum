@@ -131,7 +131,22 @@ export function CharacterProvider({ children }: { children: ReactNode }) {
   const charRef     = useRef<CharacterData | null>(null)
   const conflictRef = useRef<ConflictState | null>(null)
 
-  const syncChar     = (c: CharacterData | null) => { charRef.current = c; setCharacter(c) }
+  const syncChar     = (c: CharacterData | null) => {
+    // Migrate cname_/citem_ from choices → containerNames
+    if (c) {
+      if (!c.containerNames) c.containerNames = {}
+      let migrated = false
+      for (const key of Object.keys(c.choices)) {
+        if (key.startsWith('cname_') || key.startsWith('citem_')) {
+          c.containerNames[key] = c.choices[key]
+          delete c.choices[key]
+          migrated = true
+        }
+      }
+      if (migrated) c = { ...c }
+    }
+    charRef.current = c; setCharacter(c)
+  }
   const syncConflict = (c: ConflictState | null) => { conflictRef.current = c; setConflict(c) }
 
   // ── Debounced push: IDB write is immediate, worker push is debounced ──
@@ -166,8 +181,10 @@ export function CharacterProvider({ children }: { children: ReactNode }) {
         await saveCharacterRecord({ id, data, updatedAt: serverTs, synced: true })
         setSyncError(null)
       }
-    } catch {
-      setSyncError('Sync failed — changes saved locally.')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('[push failed]', msg)
+      setSyncError(`Sync failed: ${msg}`)
     } finally {
       pushInFlightRef.current = false
       const pending = pendingPushRef.current
@@ -425,7 +442,13 @@ export function CharacterProvider({ children }: { children: ReactNode }) {
   const updateAbilityScores = useCallback((scores: AbilityScores) => {
     const prev = charRef.current
     if (!prev) return
-    const ac = deriveAC(prev.equipment[0], scores, prev.class)
+    let ac = deriveAC(prev.equipment[0], scores, prev.class)
+    // Add shield bonus from weapon slots
+    for (const w of [prev.equipment[1], prev.equipment[2]]) {
+      if (!w) continue
+      const row = db.loaded ? [...db.armour.values()].find(a => a.name.toLowerCase() === w.toLowerCase()) : undefined
+      if (row?.armour_category === 'shield') ac += row.bonus_ac
+    }
     doUpdate({ abilityScores: scores, ac })
   }, [doUpdate])
 
@@ -433,7 +456,13 @@ export function CharacterProvider({ children }: { children: ReactNode }) {
     const prev = charRef.current
     if (!prev) return
     const equipment: [string | null, string | null, string | null] = [armor, weapons[0], weapons[1]]
-    const ac = deriveAC(armor, prev.abilityScores, prev.class)
+    let ac = deriveAC(armor, prev.abilityScores, prev.class)
+    // Add shield bonus if a shield is in either weapon slot
+    for (const w of weapons) {
+      if (!w) continue
+      const row = db.loaded ? [...db.armour.values()].find(a => a.name.toLowerCase() === w.toLowerCase()) : undefined
+      if (row?.armour_category === 'shield') ac += row.bonus_ac
+    }
     doUpdate({ equipment, ac })
   }, [doUpdate])
 

@@ -631,11 +631,20 @@ class DatabaseService {
 
   /** All progression rows for a class+subclass at one specific level. */
   getProgressionAtLevel(classId: number, subclassId: number | null, level: number): ProgressionRow[] {
-    return this.progression.filter(r =>
+    const rows = this.progression.filter(r =>
       r.level === level &&
       r.class_id === classId &&
       (r.subclass_id === null || r.subclass_id === subclassId)
     )
+    // If no rows matched (e.g. subclassId is null but all rows are per-subclass),
+    // fall back to the first subclass variant so universal data like ASI still works.
+    if (rows.length === 0 && subclassId === null) {
+      const fallback = this.progression.find(r =>
+        r.level === level && r.class_id === classId
+      )
+      if (fallback) return [fallback]
+    }
+    return rows
   }
 
   /** Accumulated trait IDs for all levels 1–level. Used to derive full trait list. */
@@ -657,6 +666,16 @@ class DatabaseService {
     return choiceIds
       .map(id => this.choices.get(id))
       .filter((c): c is ChoiceRow => c !== undefined)
+  }
+
+  /** All levels ≤ characterLevel where this class gets an ASI. */
+  getAsiLevels(classId: number, subclassId: number | null, characterLevel: number): number[] {
+    const levels: number[] = []
+    for (let lv = 1; lv <= characterLevel; lv++) {
+      const rows = this.getProgressionAtLevel(classId, subclassId, lv)
+      if (rows.some(r => r.is_asi)) levels.push(lv)
+    }
+    return levels
   }
 
   /** Recurring choices that fire on level-up for this class. */

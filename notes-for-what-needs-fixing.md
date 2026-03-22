@@ -4,28 +4,36 @@
 
 ### Phase 1: New Character Storage System
 - [x] **1A. Trait storage** — raceTraits/extraTraits now store IDs not strings
-- [ ] **1B. Define CharacterData type** — merge CharacterSheet + CharacterState into one type, spells as IDs, skills as IDs, everything structured
-- [ ] **1C. Update IDB schema** — CharacterRecord stores `data: CharacterData` not `markdown: string`
-- [ ] **1D. Update worker** — individual columns A:BM, new read/write/API payloads
-- [ ] **1E. Update sync.ts** — new payload types, push/pull sends CharacterData not markdown
-- [ ] **1F. Rewrite CharacterContext** — single `character` state, delete sheet/state split, update all mutators
-- [ ] **1G. Delete markdown.ts** — no more serialize/parse
-- [ ] **1H. Update all pages** — read from `character` instead of `sheet`/`state`
-- [ ] **1I. Update DM Edit** — structured form replacing raw markdown textarea
-- [ ] **1J. Update ConflictModal** — use CharacterData not markdown
+- [x] **1B. Define CharacterData type** — merged CharacterSheet + CharacterState into single CharacterData type; spells as IDs, skills as IDs, saving throws as IDs, currency/equipment as tuples
+- [x] **1C. Update IDB schema** — CharacterRecord stores `data: CharacterData`, bumped to v8; conflictServerMarkdown → conflictServerData
+- [x] **1D. Update worker** — 65 columns A:BM, charToRow/rowToChar, PUT/GET use CharacterData payloads
+- [x] **1E. Update sync.ts** — RemoteCharacter/PushRequest/PushConflict updated; pushCharacter(id, data, updatedAt, force)
+- [x] **1F. Rewrite CharacterContext** — single `character: CharacterData` state, all mutators updated, doUpdate pattern
+- [x] **1G. Delete markdown.ts** — deleted; no markdown anywhere in codebase
+- [x] **1H. Update all pages** — Stats, Spells, SpellChooser, Traits, Items, Inventory, Notes, Dying, Settings, CharacterSelect, CharacterCreator, DBAdmin, LevelUpModal, ShortRestModal, CharacterHeader all updated
+- [x] **1I. Update DM Edit** — JSON editor (textarea with JSON.stringify/parse, saves via updateCharacter)
+- [x] **1J. Update ConflictModal** — uses CharacterData, serverData.name for display
 
 ### Phase 2: New Inventory System
-- [ ] Slot-based containers (On Person 5, Bag 20, Sack 3, BoH infinite)
-- [ ] Currency auto-parse from bag text
-- [ ] Currency vertical G/S/C squares
-- [ ] Equipment left, currency right layout
+- [x] Slot-based containers — On Person (5), Backpack (20), Bag 2-5 (20 each), Pouch 1-5 (3 each), Bag of Holding (unlimited); tabbed UI, per-container slot counts
+- [x] Equipment dropdowns — armor, weapon 1, weapon 2; equip/unequip moves items to/from bag
+- [x] Move items between containers
+- [ ] Currency auto-parse from bag text — not implemented
+- [ ] Currency vertical G/S/C squares — still horizontal pill layout (not changed from original design)
+- [ ] Equipment left, currency right layout — not implemented
 
 ### Phase 3: Visual Fixes
-- [ ] Spell slots UI rethink (numbers in grid, sorc points)
-- [ ] Spells page: always show known spells, prepared toggle, class-aware limits
-- [ ] Traits layout: class traits fixed left, others stacked right
-- [ ] Top bar consistency across all screens
-- [ ] Inventory visual polish
+- [x] Spell slots UI rethink — number grid cells (level / current / max), tap current to use, tap max to restore
+- [x] Sorcery points — "Sorc" cell alongside spell slots for Sorcerer, tracked in resources[185], restores on long rest
+- [x] Spells page: prepared toggle, class-aware limits — prepared casters see count/limit, limit enforced (can't over-prepare), Forget Spell button, All/Prepared filter
+- [x] Traits layout — class + subclass traits in left column, race/feats/fighting styles/extras in right column; flexbox not CSS columns
+- [x] Top bar consistency — all pages (Spells, Traits, Inventory, Notes) use sticky header with same pattern
+- [x] Inventory visual polish — hover states on tabs, items, action buttons, move options
+
+### Remaining / Not Implemented
+- [x] Currency auto-parse from bag text — typing "50 gp" / "12 sp" / "4 cp" in the add-item field adds to currency instead of bag
+- [x] Currency layout: vertical squares (G/S/C stacked column on right side)
+- [x] Equipment/currency side-by-side layout — equipment dropdowns left, currency squares right
 
 ---
 
@@ -50,11 +58,11 @@ BJ=subclass, BK=skill_details {}, BL=bag_of_holding [], BM=updated_at
 
 ## Raw Notes (original user feedback)
 
-Spells tab is confusing — able to prepare all spells, can't remove them
-Spell slots UI rethink — numbers in grid, sorc points
-Top bar consistency across screens
-Traits layout — class left, others stacked right
-Inventory redesign — slot-based containers, currency squares
-Currency auto-parse from bag text
-Draconic Flight showing at level 2 (fixed by trait ID storage)
-Traits should store IDs not descriptions (done)
+Spells tab is confusing — able to prepare all spells, can't remove them ✅ fixed
+Spell slots UI rethink — numbers in grid, sorc points ✅ fixed
+Top bar consistency across screens ✅ fixed
+Traits layout — class left, others stacked right ✅ fixed
+Inventory redesign — slot-based containers, currency squares ✅ partially (containers done, currency squares not yet)
+Currency auto-parse from bag text ⬜ not implemented
+Draconic Flight showing at level 2 (fixed by trait ID storage) ✅ fixed
+Traits should store IDs not descriptions ✅ fixed

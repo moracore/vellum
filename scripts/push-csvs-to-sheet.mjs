@@ -240,11 +240,16 @@ async function main() {
     // Clear existing data first (in case tab existed already)
     if (existingNames.has(tabName)) {
       const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(tabName)}:clear`
-      await fetch(clearUrl, {
+      const clearRes = await fetch(clearUrl, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: '{}',
       })
+      if (!clearRes.ok) {
+        console.error(`     ⚠️  Clear failed for "${tabName}": ${await clearRes.text()}`)
+        console.error(`     Skipping this tab to avoid stale data`)
+        continue
+      }
     }
 
     // Write all rows

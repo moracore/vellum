@@ -59,6 +59,12 @@ export default function LevelUpModal({ newLevel, className, onDismiss }: Props) 
     : []
   const actionableChoices = choices.filter(c =>
     c.option_source !== 'grant' && c.option_source !== 'subclasses'
+    && c.option_source !== 'spells' && c.option_source !== 'invocations'
+    && c.option_source !== 'tools'
+  )
+  // Info-only choices shown in the choices step but no selection needed
+  const infoChoices = choices.filter(c =>
+    c.option_source === 'spells' || c.option_source === 'invocations' || c.option_source === 'tools'
   )
 
   // ── Subclass check
@@ -93,7 +99,7 @@ export default function LevelUpModal({ newLevel, className, onDismiss }: Props) 
   const stepList: Step[] = []
   if (needsSubclass) stepList.push('subclass')
   if (features.length > 0) stepList.push('features')
-  if (actionableChoices.length > 0) stepList.push('choices')
+  if (actionableChoices.length > 0 || infoChoices.length > 0) stepList.push('choices')
   if (hasASI) stepList.push('asi')
   stepList.push('hp')
   if (hasSpellStep) stepList.push('spells')
@@ -117,14 +123,26 @@ export default function LevelUpModal({ newLevel, className, onDismiss }: Props) 
       const firstId = c.choice_elements[0]
       if (c.option_source === 'feats') {
         init[c.choice_id] = firstId !== undefined
-          ? (db.getGeneralFeat(firstId)?.name ?? String(firstId))
+          ? (db.getGeneralFeat(firstId)?.name ?? db.getEpicBoonFeat(firstId)?.name ?? '')
           : ''
       } else if (c.option_source === 'skills') {
         init[c.choice_id] = firstId !== undefined
-          ? (db.skills.find(s => s.skill_id === firstId)?.name ?? String(firstId))
+          ? (db.skills.find(s => s.skill_id === firstId)?.name ?? '')
+          : ''
+      } else if (c.option_source === 'weapons') {
+        init[c.choice_id] = firstId !== undefined
+          ? (db.getWeapon(firstId)?.name ?? '')
+          : ''
+      } else if (c.option_source === 'traits') {
+        init[c.choice_id] = firstId !== undefined
+          ? (db.getTrait(firstId)?.name ?? '')
+          : ''
+      } else if (c.option_source === 'choices') {
+        init[c.choice_id] = firstId !== undefined
+          ? (db.getChoice(firstId)?.verbage ?? '')
           : ''
       } else {
-        init[c.choice_id] = firstId !== undefined ? String(firstId) : ''
+        init[c.choice_id] = ''
       }
     }
     return init
@@ -135,11 +153,21 @@ export default function LevelUpModal({ newLevel, className, onDismiss }: Props) 
   const hpValid = !isNaN(hpRollNum) && hpRollNum >= 1 && hpRollNum <= hitDie
   const hpIncrease = hpValid ? Math.max(1, hpRollNum + conMod) : null
 
-  // Feat lists
+  // Feat lists — exclude already-chosen feats
+  const chosenFeatNames = new Set(
+    Object.entries(character?.choices ?? {})
+      .filter(([k]) => /^feat_\d+$/.test(k))
+      .map(([, v]) => v?.toLowerCase())
+      .filter(Boolean)
+  )
   const isEpicBoon = newLevel === 19
   const featList = isEpicBoon
-    ? db.epicBoonFeats ?? []
-    : db.generalFeats ?? []
+    ? (db.epicBoonFeats ?? []).filter(f => !chosenFeatNames.has(f.name.toLowerCase()))
+    : (db.generalFeats ?? []).filter(f =>
+        f.name !== 'Ability Score Improvement' &&
+        f.prerequisite_text !== 'Fighting Style' &&
+        !chosenFeatNames.has(f.name.toLowerCase())
+      )
 
   const next = () => setStepIdx(i => Math.min(i + 1, stepList.length - 1))
 
@@ -159,9 +187,11 @@ export default function LevelUpModal({ newLevel, className, onDismiss }: Props) 
         const scores = { ...character.abilityScores }
         if (asiMode === '+2') {
           scores[asiSingle] = Math.min(20, scores[asiSingle] + 2)
+          updateChoices({ ...character.choices, [`asi_${newLevel}`]: `+2 ${ABILITY_LABELS[asiSingle]}` })
         } else {
           scores[asiFirst] = Math.min(20, scores[asiFirst] + 1)
           scores[asiSecond] = Math.min(20, scores[asiSecond] + 1)
+          updateChoices({ ...character.choices, [`asi_${newLevel}`]: `+1 ${ABILITY_LABELS[asiFirst]}, +1 ${ABILITY_LABELS[asiSecond]}` })
         }
         updateAbilityScores(scores)
       }
@@ -216,7 +246,7 @@ export default function LevelUpModal({ newLevel, className, onDismiss }: Props) 
 
     if (src === 'feats') {
       const opts = choice.choice_elements
-        .map(id => db.getGeneralFeat(id))
+        .map(id => db.getGeneralFeat(id) ?? db.getEpicBoonFeat(id))
         .filter((f): f is NonNullable<typeof f> => f !== undefined)
       const selectedFeat = opts.find(f => f.name === selectedVal)
       return (
@@ -274,20 +304,22 @@ export default function LevelUpModal({ newLevel, className, onDismiss }: Props) 
       )
     }
     if (src === 'spells') {
-      const spellOpts = choice.choice_elements
-        .map(id => db.getSpell(id))
-        .filter((s): s is NonNullable<typeof s> => s !== undefined)
-      const selectedSpell = spellOpts.find(s => s.name === selectedVal)
-      if (spellOpts.length === 0) {
-        return (
-          <div key={choice.choice_id} style={{ marginTop: '0.5rem' }}>
-            <label className="levelup-choice-label">{choice.verbage}</label>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              Use the Spells tab to add your new spell(s).
-            </p>
-          </div>
-        )
-      }
+      return (
+        <div key={choice.choice_id} style={{ marginTop: '0.5rem' }}>
+          <label className="levelup-choice-label">{choice.verbage}</label>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Use the Spells tab to add your new spell(s).
+          </p>
+        </div>
+      )
+    }
+
+    if (src === 'traits') {
+      const opts = choice.choice_elements
+        .map(id => db.getTrait(id))
+        .filter((t): t is NonNullable<typeof t> => t !== undefined)
+      const selectedTrait = opts.find(t => t.name === selectedVal)
+      if (opts.length === 0) return null
       return (
         <div key={choice.choice_id} style={{ marginTop: '0.5rem' }}>
           <label className="levelup-choice-label">{choice.verbage}:</label>
@@ -295,14 +327,60 @@ export default function LevelUpModal({ newLevel, className, onDismiss }: Props) 
             value={selectedVal}
             onChange={e => setChoiceAnswers(prev => ({ ...prev, [choice.choice_id]: e.target.value }))}
           >
-            {spellOpts.map(s => <option key={s.spell_id} value={s.name}>{s.name}</option>)}
+            {opts.map(t => <option key={t.trait_id} value={t.name}>{t.name}</option>)}
           </select>
-          {selectedSpell?.description && (
-            <div className="levelup-choice-desc">{selectedSpell.description}</div>
+          {selectedTrait?.description && (
+            <div className="levelup-choice-desc">{selectedTrait.description}</div>
           )}
         </div>
       )
     }
+
+    if (src === 'choices') {
+      // Nested sub-choices — resolve the branch verbage as options
+      const opts = choice.choice_elements
+        .map(id => db.getChoice(id))
+        .filter((c): c is NonNullable<typeof c> => c !== undefined)
+      if (opts.length === 0) return null
+      const selectedOpt = opts.find(o => o.verbage === selectedVal)
+      return (
+        <div key={choice.choice_id} style={{ marginTop: '0.5rem' }}>
+          <label className="levelup-choice-label">{choice.verbage}:</label>
+          <select className="creator-ability-select"
+            value={selectedVal}
+            onChange={e => setChoiceAnswers(prev => ({ ...prev, [choice.choice_id]: e.target.value }))}
+          >
+            {opts.map(o => <option key={o.choice_id} value={o.verbage}>{o.verbage}</option>)}
+          </select>
+          {selectedOpt?.notes && (
+            <div className="levelup-choice-desc">{selectedOpt.notes}</div>
+          )}
+        </div>
+      )
+    }
+
+    if (src === 'invocations') {
+      return (
+        <div key={choice.choice_id} style={{ marginTop: '0.5rem' }}>
+          <label className="levelup-choice-label">{choice.verbage}</label>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Manage your invocations on the Traits tab.
+          </p>
+        </div>
+      )
+    }
+
+    if (src === 'tools') {
+      return (
+        <div key={choice.choice_id} style={{ marginTop: '0.5rem' }}>
+          <label className="levelup-choice-label">{choice.verbage}</label>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Add this proficiency on your character sheet.
+          </p>
+        </div>
+      )
+    }
+
     return null
   }
 
@@ -357,6 +435,7 @@ export default function LevelUpModal({ newLevel, className, onDismiss }: Props) 
           <div className="levelup-section">
             <div className="levelup-section-title">Choices</div>
             {actionableChoices.map(c => renderChoice(c))}
+            {infoChoices.map(c => renderChoice(c))}
           </div>
         )}
 

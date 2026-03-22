@@ -105,12 +105,6 @@ export default function SpellChooser({ onClose }: Props) {
     setSelected(next)
   }
 
-  const toggleRemove = (spellId: number) => {
-    const next = new Set(toRemove)
-    if (next.has(spellId)) next.delete(spellId)
-    else next.add(spellId)
-    setToRemove(next)
-  }
 
   const confirmLearn = () => {
     // Build new spellsByLevel: keep existing minus removed, add selected

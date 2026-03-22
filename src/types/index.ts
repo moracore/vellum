@@ -83,6 +83,7 @@ export interface CharacterData {
   notes: string
   description: string
   choices: Record<string, string>
+  containerNames: Record<string, string>  // cname_*/citem_* for inventory bags/pouches
   traits: number[]       // extra/class trait IDs
   raceTraits: number[]   // race trait IDs
   resources: Record<number, { current: number; max: number }>

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { AbilityScores, CharacterData } from '../types'
 import { useCharacter } from '../context/CharacterContext'
 import { db } from '../lib/database'
-import type { ClassRow, StartingEquipmentRow } from '../lib/database'
+import type { ClassRow, StartingEquipmentRow, SpellRow } from '../lib/database'
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -456,6 +456,7 @@ export default function CharacterCreator({ onComplete, onBack }: Props) {
       notes: '',
       description: '',
       choices,
+      containerNames: {},
       traits: [],
       raceTraits,
       resources: {},

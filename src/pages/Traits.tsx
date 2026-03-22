@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useCharacter } from '../context/CharacterContext'
 import CharacterHeader from '../components/CharacterHeader'
 import ResourceTracker from '../components/ResourceTracker'
+import AsiClaimModal from '../components/AsiClaimModal'
 import { db } from '../lib/database'
 import type { TraitRow } from '../lib/database'
 import { CHOICE_DESCRIPTIONS } from '../data/choiceDescriptions'
@@ -24,6 +25,7 @@ interface ResolvedTrait {
 export default function Traits({ hideHeader }: { hideHeader?: boolean } = {}) {
   const { character, useResource, gainResource } = useCharacter()
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [asiClaimLevel, setAsiClaimLevel] = useState<number | null>(null)
 
   if (!character) return null
 
@@ -43,6 +45,17 @@ export default function Traits({ hideHeader }: { hideHeader?: boolean } = {}) {
   const raceRow = db.loaded
     ? db.races.find(r => r.name.toLowerCase() === character.race.toLowerCase())
     : undefined
+
+  // ── Detect unclaimed ASI levels ──
+  const unclaimedAsiLevels: number[] = []
+  if (db.loaded && classId !== null) {
+    const asiLevels = db.getAsiLevels(classId, subclassId, character.level)
+    for (const lv of asiLevels) {
+      const hasFeat = character.choices[`feat_${lv}`]
+      const hasAsi  = character.choices[`asi_${lv}`]
+      if (!hasFeat && !hasAsi) unclaimedAsiLevels.push(lv)
+    }
+  }
 
   // ── Helper: resolve granted spells for a trait ──
   const resolveTraitSpells = (traitId: number): ResolvedTrait['grantedSpells'] => {
@@ -72,10 +85,18 @@ export default function Traits({ hideHeader }: { hideHeader?: boolean } = {}) {
     }
   }
 
+  // ── Traits to hide: meta/informational, not real features ──
+  const isMetaTrait = (t: TraitRow) =>
+    t.feature_type === 'choice' ||
+    /^Cantrips Known\b/.test(t.name) ||
+    /^Sorcery Points Upgrade\b/.test(t.name) ||
+    /^Spells Known\b/.test(t.name)
+
   // ── Gather traits from DB, split by class vs subclass ──
   const coreClassTraits: ResolvedTrait[] = []
   const subclassTraits: ResolvedTrait[] = []
   let raceTraits: ResolvedTrait[] = []
+  const seenTraitIds = new Set<number>()
 
   if (db.loaded && classId !== null) {
     for (let lv = 1; lv <= character.level; lv++) {
@@ -84,8 +105,10 @@ export default function Traits({ hideHeader }: { hideHeader?: boolean } = {}) {
         const traits = r.feature_ids
           .map(id => db.getTrait(id))
           .filter((t): t is TraitRow => t !== undefined)
-          .filter(t => t.feature_type !== 'choice')
+          .filter(t => !isMetaTrait(t))
+          .filter(t => !seenTraitIds.has(t.trait_id))
         for (const t of traits) {
+          seenTraitIds.add(t.trait_id)
           const resolved = toResolved(t, r.subclass_id !== null ? 'subclass' : 'class')
           if (r.subclass_id !== null) {
             subclassTraits.push(resolved)
@@ -226,6 +249,26 @@ export default function Traits({ hideHeader }: { hideHeader?: boolean } = {}) {
       </div>
 
       <div className="traits-scroll">
+        {unclaimedAsiLevels.length > 0 && (
+          <div className="asi-unclaimed-banner">
+            <span className="asi-unclaimed-text">
+              Unclaimed ASI / Feat at level{unclaimedAsiLevels.length > 1 ? 's' : ''}{' '}
+              {unclaimedAsiLevels.join(', ')}
+            </span>
+            <div className="asi-unclaimed-btns">
+              {unclaimedAsiLevels.map(lv => (
+                <button key={lv} className="asi-unclaimed-btn" onClick={() => setAsiClaimLevel(lv)}>
+                  Lv {lv}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {asiClaimLevel !== null && (
+          <AsiClaimModal level={asiClaimLevel} onDismiss={() => setAsiClaimLevel(null)} />
+        )}
+
         <div className="trait-columns">
           {/* Left column: Class + Subclass traits */}
           <div className="trait-col trait-col--left">

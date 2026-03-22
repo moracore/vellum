@@ -73,12 +73,6 @@ export default function Stats({ onOpenSettings, onDying }: Props) {
   const [showZeroModal, setShowZeroModal] = useState(false)
   const [restToast, setRestToast] = useState(false)
 
-  // Build skill ID→name lookup from DB
-  const skillIdToName = useMemo(() => {
-    if (!db.loaded) return new Map<number, string>()
-    return new Map(db.skills.map(s => [s.skill_id, s.name]))
-  }, [])
-
   const skillNameToId = useMemo(() => {
     if (!db.loaded) return new Map<string, number>()
     return new Map(db.skills.map(s => [s.name, s.skill_id]))
