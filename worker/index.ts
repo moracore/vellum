@@ -14,7 +14,7 @@
  * Sheet layout ("Characters" tab):
  *   Row 1: headers
  *   Row 2+: one row per character
- *   Columns A–BM (65 columns) — see charToRow/rowToChar for the full mapping.
+ *   Columns A–BN (66 columns) — see charToRow/rowToChar for the full mapping.
  */
 
 import type { CharacterData } from '../src/types'
@@ -126,12 +126,12 @@ async function getAccessToken(sa: ServiceAccount): Promise<string> {
  * AY=notes, AZ=description, BA=choices{}, BB=traits[], BC=race_traits[],
  * BD=resources{}, BE=languages[], BF=other_proficiencies, BG=aliases[],
  * BH=alignment, BI=deity, BJ=subclass, BK=skill_details{},
- * BL=bag_of_holding[], BM=updated_at
+ * BL=bag_of_holding[], BM=container_names{}, BN=updated_at
  *
  * Encoding: scalars as plain values, arrays/objects as JSON strings.
  */
 
-const NUM_COLS = 65  // A(0) through BM(64)
+const NUM_COLS = 66  // A(0) through BN(65)
 
 function charToRow(char: CharacterData, updatedAt: string): string[] {
   const j = (v: unknown) => JSON.stringify(v)
@@ -193,7 +193,8 @@ function charToRow(char: CharacterData, updatedAt: string): string[] {
     nullable(char.subclass),          // BJ (61)
     j(char.skillDetails),             // BK (62)
     j(char.bagOfHolding),             // BL (63)
-    updatedAt,                        // BM (64)
+    j(char.containerNames),           // BM (64)
+    updatedAt,                        // BN (65)
   ]
 }
 
@@ -263,15 +264,32 @@ function rowToChar(row: string[]): { data: CharacterData; updated_at: string } {
     subclass:          nullStr(61),
     skillDetails:      json(62, {}),
     bagOfHolding:      json(63, []),
+    containerNames:    json(64, {}),
   }
 
-  return { data, updated_at: str(64) }
+  // Migrate cname_/citem_ from choices → containerNames
+  const cn = data.containerNames
+  const ch = data.choices
+  let migrated = false
+  for (const key of Object.keys(ch)) {
+    if (key.startsWith('cname_') || key.startsWith('citem_')) {
+      cn[key] = ch[key]
+      delete ch[key]
+      migrated = true
+    }
+  }
+  if (migrated) {
+    data.containerNames = cn
+    data.choices = ch
+  }
+
+  return { data, updated_at: str(65) }
 }
 
 // ─── Sheets API helpers ───────────────────────────────────────────────────────
 
 const TAB   = 'Characters'
-const RANGE = `${TAB}!A2:BM`   // skip header row, all 65 columns
+const RANGE = `${TAB}!A2:BN`   // skip header row, all 65 columns
 
 async function readAllRows(token: string, sheetId: string): Promise<string[][]> {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(RANGE)}`
@@ -287,7 +305,7 @@ async function updateRow(
   sheetRow: number,
   values: string[],
 ): Promise<void> {
-  const range = `${TAB}!A${sheetRow}:BM${sheetRow}`
+  const range = `${TAB}!A${sheetRow}:BN${sheetRow}`
   const url   = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?valueInputOption=RAW`
   const res = await fetch(url, {
     method: 'PUT',
@@ -302,7 +320,7 @@ async function appendRow(
   sheetId: string,
   values: string[],
 ): Promise<void> {
-  const range = `${TAB}!A:BM`
+  const range = `${TAB}!A:BN`
   const url   = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`
   const res = await fetch(url, {
     method: 'POST',
@@ -444,7 +462,7 @@ export default {
 
         const rows            = await readAllRows(token, env.SHEET_ID)
         const idx             = rows.findIndex(r => r[0] === id)
-        const serverUpdatedAt = idx !== -1 ? (rows[idx][64] ?? '') : null
+        const serverUpdatedAt = idx !== -1 ? (rows[idx][65] ?? '') : null
         const serverData      = idx !== -1 ? rowToChar(rows[idx]).data : null
 
         // Conflict check: server is strictly newer and caller did not set force
