@@ -647,6 +647,22 @@ class DatabaseService {
     return rows
   }
 
+  /** Resolve cantrips_known and spells_known at a given level.
+   *  The CSV uses sparse encoding — values only appear at levels where they change.
+   *  This walks backwards to find the most recent non-null value. */
+  getKnownCounts(classId: number, subclassId: number | null, level: number): { cantrips: number; spells: number } {
+    let cantrips: number | null = null
+    let spells: number | null = null
+    for (let lv = level; lv >= 1 && (cantrips === null || spells === null); lv--) {
+      const rows = this.getProgressionAtLevel(classId, subclassId, lv)
+      for (const r of rows) {
+        if (cantrips === null && r.cantrips_known !== null) cantrips = r.cantrips_known
+        if (spells === null && r.spells_known !== null) spells = r.spells_known
+      }
+    }
+    return { cantrips: cantrips ?? 0, spells: spells ?? 0 }
+  }
+
   /** Accumulated trait IDs for all levels 1–level. Used to derive full trait list. */
   getAllTraitsForCharacter(classId: number, subclassId: number | null, level: number): number[] {
     const ids: number[] = []

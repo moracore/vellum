@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { ArrowLeft, Check } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { ArrowLeft, Check, Minus } from 'lucide-react'
 import { useCharacter } from '../context/CharacterContext'
 import { db } from '../lib/database'
 import type { SpellRow } from '../lib/database'
@@ -14,7 +14,10 @@ interface Props {
 export default function SpellChooser({ onClose }: Props) {
   const { character, updateSpells } = useCharacter()
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [selected, setSelected] = useState<Set<number>>(new Set())
+
+  // Track additions and removals separately from the current known set
+  const [toAdd, setToAdd] = useState<Set<number>>(new Set())
+  const [toRemove, setToRemove] = useState<Set<number>>(new Set())
 
   if (!character) return null
 
@@ -23,11 +26,12 @@ export default function SpellChooser({ onClose }: Props) {
 
   const classId = classRow.class_id
   const isPreparedCaster = classRow.prepared_level_divisor != null
-  const lvlRow = db.progression.find(r =>
-    r.class_id === classId && r.level === character.level && r.subclass_id === null
-  )
-  const neededCantrips = lvlRow?.cantrips_known ?? 0
-  const neededSpells = lvlRow?.spells_known ?? 0
+
+  const subclassRow = character.subclass
+    ? db.getSubclassesForClass(classId).find(s => s.name.toLowerCase() === character.subclass!.toLowerCase())
+    : undefined
+  const subclassId = subclassRow?.subclass_id ?? null
+  const { cantrips: neededCantrips, spells: neededSpells } = db.getKnownCounts(classId, subclassId, character.level)
 
   // Max usable spell slot level
   const dbSlots = db.getSpellSlots(classId, character.level)
@@ -42,88 +46,138 @@ export default function SpellChooser({ onClose }: Props) {
   }
   if (neededCantrips > 0 || isPreparedCaster) maxSlotLevel = Math.max(maxSlotLevel, 0)
 
-  const allClassSpells = db.getClassSpells(classId)
-
-  // Build set of already-known spell IDs
-  const knownIds = new Set(character.spellsByLevel.flat())
-  const knownCantrips = character.spellsByLevel[0]?.length ?? 0
-  const knownLeveled = character.spellsByLevel.slice(1).reduce((sum, ids) => sum + ids.length, 0)
-
-  const slotsCantrips = Math.max(0, neededCantrips - knownCantrips)
-  const slotsSpells = isPreparedCaster ? Infinity : Math.max(0, neededSpells - knownLeveled)
-  const totalSlots = isPreparedCaster ? Infinity : slotsCantrips + slotsSpells
-
-  // Build available spell list grouped by level, excluding already known
-  const available: { level: number; spells: SpellRow[] }[] = []
-  for (let lvl = 0; lvl <= maxSlotLevel; lvl++) {
-    const spells = allClassSpells
-      .filter(s => s.level === lvl && !knownIds.has(s.spell_id))
-      .sort((a, b) => a.name.localeCompare(b.name))
-    if (spells.length > 0) available.push({ level: lvl, spells })
-  }
-
-  // For prepared casters, show already-known spells so they can be removed
-  const removable: { level: number; spells: { id: number; name: string; level: number }[] }[] = []
-  if (isPreparedCaster) {
-    const byLevel: Record<number, { id: number; name: string; level: number }[]> = {}
-    for (let lvl = 0; lvl <= 9; lvl++) {
-      const ids = character.spellsByLevel[lvl] ?? []
-      for (const id of ids) {
-        const spell = db.spells.get(id)
-        if (!spell) continue
-        if (!byLevel[lvl]) byLevel[lvl] = []
-        byLevel[lvl].push({ id, name: spell.name, level: lvl })
+  // ── Build the set of trait-granted spell IDs (not toggleable) ──
+  const traitGrantedIds = useMemo(() => {
+    const ids = new Set<number>()
+    if (!db.loaded) return ids
+    const allTraitIds: number[] = []
+    const raceRow = db.races.find(r => r.name.toLowerCase() === character.race.toLowerCase())
+    if (raceRow) allTraitIds.push(...raceRow.trait_ids)
+    if (character.traits) allTraitIds.push(...character.traits)
+    const cId = classRow?.class_id ?? null
+    const subclassRow = db.loaded && cId && character.subclass
+      ? db.getSubclassesForClass(cId).find(s => s.name.toLowerCase() === character.subclass!.toLowerCase())
+      : undefined
+    const subclassId = subclassRow?.subclass_id ?? null
+    if (cId !== null) {
+      for (let lv = 1; lv <= character.level; lv++) {
+        const rows = db.getProgressionAtLevel(cId, subclassId, lv)
+        for (const r of rows) allTraitIds.push(...r.feature_ids)
       }
     }
-    for (const lvl of Object.keys(byLevel).map(Number).sort((a, b) => a - b)) {
-      removable.push({ level: lvl, spells: byLevel[lvl].sort((a, b) => a.name.localeCompare(b.name)) })
+    for (const tid of allTraitIds) {
+      for (const ts of db.getTraitSpells(tid, character.level)) {
+        ids.add(ts.spell_id)
+      }
     }
-  }
+    return ids
+  }, [character.race, character.traits, character.class, character.subclass, character.level, classRow?.class_id])
 
-  const selectedCantrips = [...selected].filter(id => {
-    const s = allClassSpells.find(sp => sp.spell_id === id)
+  const allClassSpells = db.getClassSpells(classId)
+
+  // Current known spell IDs (before any changes)
+  const baseKnownIds = new Set(character.spellsByLevel.flat())
+
+  // "Effective" known state = (base + toAdd) - toRemove
+  const effectiveKnownIds = new Set<number>()
+  for (const id of baseKnownIds) {
+    if (!toRemove.has(id)) effectiveKnownIds.add(id)
+  }
+  for (const id of toAdd) effectiveKnownIds.add(id)
+
+  // Count effective known by category
+  const effectiveCantrips = [...effectiveKnownIds].filter(id => {
+    const s = db.spells.get(id)
     return s?.level === 0
   }).length
-  const selectedLeveled = selected.size - selectedCantrips
+  const effectiveLeveled = effectiveKnownIds.size - effectiveCantrips
 
-  const canSelect = (spell: SpellRow): boolean => {
-    if (selected.has(spell.spell_id)) return true
+  // Slots remaining for known-spell casters
+  const slotsCantrips = Math.max(0, neededCantrips - effectiveCantrips)
+  const slotsSpells = isPreparedCaster ? Infinity : Math.max(0, neededSpells - effectiveLeveled)
+
+  // Build full class spell list grouped by level
+  const spellsByLevel: { level: number; spells: (SpellRow & { known: boolean; traitGranted: boolean })[] }[] = []
+  for (let lvl = 0; lvl <= maxSlotLevel; lvl++) {
+    const spells = allClassSpells
+      .filter(s => s.level === lvl)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(s => ({
+        ...s,
+        known: effectiveKnownIds.has(s.spell_id),
+        traitGranted: traitGrantedIds.has(s.spell_id),
+      }))
+    if (spells.length > 0) spellsByLevel.push({ level: lvl, spells })
+  }
+
+  const canToggleOn = (spell: SpellRow): boolean => {
     if (isPreparedCaster) return true
-    if (spell.level === 0) return selectedCantrips < slotsCantrips
-    return selectedLeveled < slotsSpells
+    // Spells pending removal can always be re-added (undo)
+    if (toRemove.has(spell.spell_id)) return true
+    if (spell.level === 0) return slotsCantrips > 0
+    return slotsSpells > 0
   }
 
-  const toggleSpell = (spell: SpellRow) => {
-    const next = new Set(selected)
-    if (next.has(spell.spell_id)) {
-      next.delete(spell.spell_id)
-    } else if (canSelect(spell)) {
-      next.add(spell.spell_id)
+  const toggleSpell = (spellId: number) => {
+    const isBaseKnown = baseKnownIds.has(spellId)
+    const isPendingAdd = toAdd.has(spellId)
+    const isPendingRemove = toRemove.has(spellId)
+
+    if (isPendingRemove) {
+      // Undo removal
+      const next = new Set(toRemove)
+      next.delete(spellId)
+      setToRemove(next)
+    } else if (isPendingAdd) {
+      // Undo addition
+      const next = new Set(toAdd)
+      next.delete(spellId)
+      setToAdd(next)
+    } else if (isBaseKnown) {
+      // Mark for removal
+      const next = new Set(toRemove)
+      next.add(spellId)
+      setToRemove(next)
+    } else {
+      // Mark for addition
+      const spell = allClassSpells.find(s => s.spell_id === spellId)
+      if (spell && canToggleOn(spell)) {
+        const next = new Set(toAdd)
+        next.add(spellId)
+        setToAdd(next)
+      }
     }
-    setSelected(next)
   }
 
-
-  const confirmLearn = () => {
+  const confirmChanges = () => {
     const newByLevel = character.spellsByLevel.map(ids => [...ids])
 
-    // Add selected spells to their correct levels
-    for (const spellId of selected) {
+    // Remove spells
+    for (const spellId of toRemove) {
+      for (let lvl = 0; lvl <= 9; lvl++) {
+        newByLevel[lvl] = newByLevel[lvl].filter(id => id !== spellId)
+      }
+    }
+
+    // Add spells
+    for (const spellId of toAdd) {
       const spell = allClassSpells.find(s => s.spell_id === spellId)
       if (!spell) continue
       if (!newByLevel[spell.level]) newByLevel[spell.level] = []
       newByLevel[spell.level].push(spellId)
     }
 
-    const newPrepared = [...character.preparedSpells]
+    // Clean up prepared spells: remove any that are no longer known
+    const allKnown = new Set(newByLevel.flat())
+    const newPrepared = character.preparedSpells.filter(id => allKnown.has(id))
 
     updateSpells(newByLevel, newPrepared)
     onClose()
   }
 
-  const remainingCantrips = slotsCantrips - selectedCantrips
-  const remainingSpells = isPreparedCaster ? null : slotsSpells - selectedLeveled
-  const hasChanges = selected.size > 0
+  const hasChanges = toAdd.size > 0 || toRemove.size > 0
+  const addCount = toAdd.size
+  const removeCount = toRemove.size
 
   return (
     <div className="chooser-page">
@@ -134,58 +188,66 @@ export default function SpellChooser({ onClose }: Props) {
           <ArrowLeft size={16} />
           Back
         </button>
-        <div className="chooser-title">Learn Spells</div>
+        <div className="chooser-title">Manage Spells</div>
         <div className="chooser-counts">
-          {slotsCantrips > 0 && (
-            <span className={remainingCantrips === 0 ? 'chooser-count done' : 'chooser-count'}>
-              {remainingCantrips > 0 ? `${remainingCantrips} cantrip${remainingCantrips !== 1 ? 's' : ''} left` : 'Cantrips ✓'}
-            </span>
-          )}
-          {remainingSpells !== null && remainingSpells > 0 && (
-            <span className="chooser-count">
-              {remainingSpells} spell{remainingSpells !== 1 ? 's' : ''} left
-            </span>
-          )}
-          {isPreparedCaster && (
-            <span className="chooser-count">
-              {selected.size > 0 ? `+${selected.size}` : 'Add spells'}
-            </span>
+          {!isPreparedCaster && (
+            <>
+              <span className={`chooser-count${slotsCantrips === 0 ? ' done' : ''}`}>
+                {effectiveCantrips}/{neededCantrips} cantrips
+              </span>
+              <span className={`chooser-count${slotsSpells === 0 ? ' done' : ''}`}>
+                {effectiveLeveled}/{neededSpells} spells
+              </span>
+            </>
           )}
         </div>
       </div>
 
       {/* Spell list */}
       <div className="chooser-scroll">
-        {available.length === 0 ? (
-          <div className="chooser-empty">No new spells available at this level.</div>
+        {spellsByLevel.length === 0 ? (
+          <div className="chooser-empty">No spells available for your class at this level.</div>
         ) : (
-          available.map(({ level, spells }) => (
+          spellsByLevel.map(({ level, spells }) => (
             <div key={level} className="chooser-group">
               <div className="chooser-group-heading">{LEVEL_LABELS[level]}</div>
               {spells.map(spell => {
-                const isSelected = selected.has(spell.spell_id)
                 const isExpanded = expanded === spell.name
-                const selectable = canSelect(spell)
+                const isTraitGranted = spell.traitGranted
+                const isKnown = spell.known
+                const isPendingAdd = toAdd.has(spell.spell_id)
+                const isPendingRemove = toRemove.has(spell.spell_id)
+                const canToggle = isKnown || isPendingRemove || isPendingAdd || canToggleOn(spell)
+                const isDimmed = !canToggle
                 return (
                   <div
                     key={spell.spell_id}
-                    className={`chooser-card ${isSelected ? 'selected' : ''} ${!selectable && !isSelected ? 'dim' : ''}`}
+                    className={`chooser-card${isKnown ? ' selected' : ''}${isDimmed ? ' dim' : ''}${isPendingRemove ? ' chooser-card--removing' : ''}${isPendingAdd ? ' chooser-card--adding' : ''}`}
                   >
                     <div
                       className="chooser-card-row"
                       onClick={() => setExpanded(isExpanded ? null : spell.name)}
                     >
                       <div className="chooser-card-left">
-                        <button
-                          className={`chooser-pick-btn ${isSelected ? 'picked' : ''}`}
-                          onClick={e => { e.stopPropagation(); toggleSpell(spell) }}
-                          disabled={!selectable && !isSelected}
-                        >
-                          {isSelected ? <Check size={12} /> : '+'}
-                        </button>
+                        {isTraitGranted ? (
+                          <span className="chooser-pick-btn picked chooser-pick-btn--trait" title="Granted by trait">
+                            <Check size={12} />
+                          </span>
+                        ) : (
+                          <button
+                            className={`chooser-pick-btn${isKnown ? ' picked' : ''}${isPendingRemove ? ' chooser-pick-btn--remove' : ''}`}
+                            onClick={e => { e.stopPropagation(); toggleSpell(spell.spell_id) }}
+                            disabled={!canToggle}
+                          >
+                            {isPendingRemove ? <Minus size={12} /> : isKnown ? <Check size={12} /> : '+'}
+                          </button>
+                        )}
                         <div className="chooser-card-info">
                           <span className="chooser-spell-name">{spell.name}</span>
-                          <span className="chooser-spell-school">{spell.school}</span>
+                          <span className="chooser-spell-school">
+                            {spell.school}
+                            {isTraitGranted && ' · Trait'}
+                          </span>
                         </div>
                       </div>
                       <span className="chooser-chevron">{isExpanded ? '▲' : '▼'}</span>
@@ -213,11 +275,12 @@ export default function SpellChooser({ onClose }: Props) {
       {hasChanges && (
         <div className="chooser-confirm-bar">
           <span className="chooser-confirm-info">
-            {selected.size} spell{selected.size !== 1 ? 's' : ''} selected
-            {totalSlots !== Infinity && totalSlots > 0 && selected.size < totalSlots ? ` (${totalSlots - selected.size} more available)` : ''}
+            {addCount > 0 && `+${addCount} added`}
+            {addCount > 0 && removeCount > 0 && ', '}
+            {removeCount > 0 && `−${removeCount} removed`}
           </span>
-          <button className="chooser-confirm-btn" onClick={confirmLearn}>
-            Confirm
+          <button className="chooser-confirm-btn" onClick={confirmChanges}>
+            Save Changes
           </button>
         </div>
       )}
